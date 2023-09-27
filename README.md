@@ -170,7 +170,7 @@ interviews:
 
 ```(YAML)
 includes:
-  - docassemble-LSDocassembleLink:data/questions/LSLink.yml
+  - docassemble-LegalServerLink:data/questions/LSLink.yml
 ```
 
 ### Interview Security
