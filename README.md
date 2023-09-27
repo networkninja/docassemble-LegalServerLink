@@ -7,7 +7,7 @@ Docassemble Server, allowing Docassemble developers to:
 * Save documents generated in Docassemble interviews back to relevant case files
 in LegalServer.
 
-![Docassemble Interviews Listview in LegalServer](/docassemble/LegalServerLink/data/static/docassemble-legalserver-screenshot.png)
+![Docassemble Interviews Listview in LegalServer](docassemble-legalserver-screenshot.png)
 
 ## Introduction
 
