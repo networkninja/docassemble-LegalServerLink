@@ -1,0 +1,6 @@
+docassemble.base>=1.4.54
+docassemble.webapp>=1.4.54
+mypy
+requests>=2.31.0
+pycountry>=22.3.5
+lxml>=4.9.3

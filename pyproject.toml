@@ -1,0 +1,42 @@
+[tool.mypy]
+# global options
+exclude = '''(?x)(
+    ^setup.py$
+  )'''
+
+# per-module options:
+[[tool.mypy.overrides]]
+module = "docassemble.webapp.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "docassemble.base.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pycountry"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "backports.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "backports.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "flask_cors.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "flask.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "requests.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "lxml.*"
+ignore_missing_imports = true
