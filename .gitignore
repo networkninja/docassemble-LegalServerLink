@@ -1,0 +1,14 @@
+docassemble/LegalServerLink/data/questions/.DS_Store
+docassemble/.DS_Store
+.DS_Store
+docassemble/LegalServerLink/sampledata.json
+.markdownlint.json
+.vscode
+.vscode/settings.json
+.vscode/*
+.github/workflows/copy_public.yml
+docassemble/LegalServerLink/__pycache__
+tests/__pycache__
+docassemble/LegalServerLink/testpyc.py
+.mypy_cache
+.venv
