@@ -1,7 +1,7 @@
 import requests
 import pycountry
 import json
-import lxml.etree as etree
+import defusedxml.ElementTree as etree
 from datetime import date
 import docassemble.base.functions
 from docassemble.base.util import (
@@ -249,7 +249,7 @@ def post_file_to_legalserver_documents_webhook(
     )
     return_dict: Dict
     try:
-        response = requests.post(url, data=payload, files=files, headers=header_content)
+        response = requests.post(url, data=payload, files=files, headers=header_content, timeout=(3,30))
         response.raise_for_status()
 
         if response.status_code != 200:
@@ -1041,7 +1041,7 @@ def get_legalserver_response(
             f"Get {source_type} request of {uuid} on: {legalserver_site} "
             f"included a request for custom fields: {str(params)}"
         )
-        response = requests.get(url, params=params, headers=header_content)
+        response = requests.get(url, params=params, headers=header_content, timeout=(3,30))
         response.raise_for_status()
         if response.status_code != 200:
             return_data = {"error": response.status_code}
@@ -1150,7 +1150,7 @@ def loop_through_legalserver_responses(
                 f"Search {source_type} records for {str(params)} on: "
                 f"{legalserver_site}"
             )
-            response = requests.get(url, params=params, headers=header_content)
+            response = requests.get(url, params=params, headers=header_content, timeout=(3,30))
             response.raise_for_status()
             if response.status_code != 200:
                 return_data = [{"error": response.status_code}]
@@ -4690,14 +4690,15 @@ def get_legalserver_report_data(
     dict_response = {}  # type: ignore
     try:
         log(f'Attempting to retrive the following report {str(report_params)} from {legalserver_site}')
-        response = requests.get(headers=header_content, url=url, params=report_params)
+        response = requests.get(headers=header_content, url=url, params=report_params, timeout=(3,30))
         response.raise_for_status()
-        # log(f'data received. headers: {str(response.headers)}, data: {response.text}')
+        log(f'data received. headers: {str(response.headers)}, data: {response.text}')
         content_type = response.headers.get("Content-Type", "")
 
         if "application/xml" in content_type or "text/xml" in content_type:
             # Parse the XML response using lxml and convert it to JSON
-            xml_tree = etree.fromstring(response.text)  # type: ignore
+            
+            xml_data = etree.fromstring(response.text)  # type: ignore
 
             # Create a function to recursively convert an ElementTree into a dictionary
             def element_to_dict(element):
@@ -4715,12 +4716,18 @@ def get_legalserver_report_data(
                         result[child.tag] = child_data
                 return result
 
-            dict_response = element_to_dict(xml_tree)
+            if xml_data is not None:
+                # Use the xml_to_dict function to recursively convert XML to a dictionary
+                dict_response = element_to_dict(xml_data)
+
 
         elif "application/json" in content_type:
             # The response is already JSON
             dict_response = response.json()
 
+    except etree.ParseError as e:
+        log(f"LegalServer report with {str(report_params)} failed: {e}")
+        return {"error": e}
     except requests.exceptions.ConnectionError as e:
         log(f"LegalServer retrieving report with {str(report_params)} failed: {e}")
         return {"error": e}
