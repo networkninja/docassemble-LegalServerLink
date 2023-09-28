@@ -4,3 +4,4 @@ mypy
 requests>=2.31.0
 pycountry>=22.3.5
 lxml>=4.9.3
+defusedxml>=0.7.1
