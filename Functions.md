@@ -614,6 +614,17 @@ Simple function that checks how many pro bono assignments there are.
 
 * `pro_bono_assignment_list` - required DAList of assignments
 
+## list_templates
+
+This is a small helper function that allows you to get a list of all the
+templates stored in the `/data/templates` folder of a given package. If no
+package is specified, it will check against the current package. A list of
+strings is returned.
+
+### Parameters
+
+* `package` - optional string name of a Docassemble package.
+
 ## Standard Keys
 
 There are functions also designed to just return the list of standard keys
@@ -632,3 +643,5 @@ following LegalServer response objects:
 * Organizations
 * Services
 * Users
+* Tasks
+* Non-Adverse Parties
