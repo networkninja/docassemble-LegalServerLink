@@ -1,0 +1,354 @@
+---
+metadata:
+  title: |
+    Sample Letters
+  short title: |
+    Letters
+  description: |
+    A sample letter/email feature
+  authors:
+    - organization: LegalServer
+  revision_date: 2023-10-11
+---
+features:
+  use catchall: True
+  temporary session: true
+comment:
+  Catchall features are enabled here just to check if you end up using a variable
+  in your template that is not defined by the data stash transfer from LegalServer.
+
+  This way, the question will not result in an error, but a basic Catch All question
+  for that missing variable.
+---
+include:
+  - LSLink.yml
+---
+objects:
+  - client_message: DAObject
+---
+initial: True
+code: |
+  if not user_logged_in():
+    kick_out_user
+---
+event: kick_out_user
+question: |
+  I am sorry, but you need to log in if you want to use this interview.
+buttons:
+  - Log in: signin
+  - Exit: exit
+---
+mandatory: True
+code: |
+  checked_for_stashed_data
+  set_legalserver_site
+
+  # If you need everything, you can call `parse_all_legalserver_data`
+  # This is a little faster since it doesn't get extra records:
+  raise_errors_getting_legalserver_data
+  parse_client_data
+  parse_legalserver_assignment_data
+  parse_legalserver_case_data
+  parse_legalserver_primary_assignment
+  parse_legalserver_pro_bono_assignments
+  parse_legalserver_current_user
+
+  # Sample defaults can be set. In this example, they are all commented out.
+  check_for_defaults
+
+  # Then it is a question of who is receiving the letter. 
+  # This will copy the object over to the appropriate recipient. 
+  recipient_copied
+
+  # Then it is a question of who is sending the letter. 
+  # This will copy the object over to the appropriate sender. 
+  check_primary_and_current # if they are the same, then there is no question.
+  client_message.sender
+  sender_copied
+
+  # This will now let you pick the letter, edit the letter, and pick how it will be sent.
+  client_message.method
+  client_message.text
+  if client_message.method == "Email":
+    email_sent
+  else:
+    client_message.letterhead
+    final_letter
+---
+comment: |
+  This is a sample code block that will set all sorts of defaults for this letter package.
+code: |
+  # client_message.planned_recipient = 'client'
+  # client_message.method = 'Letter'
+  # client_message.sender = 'current_user'
+  # client_message.letterhead = 'SampleLetterhead1.docx'
+  # client_message.textoption = 'Letter1'
+  check_for_defaults = True
+---
+question: |
+  Who is the recipient?
+fields:
+  - Recipient: client_message.planned_recipient
+    datatype: radio
+    code: |
+      potential_recipients
+id: planned_recipient
+---
+code: |
+  potential_recipients = []
+  potential_recipients.append({'client': client.name.full() + ', Client' })
+  potential_recipients.append({'primary': legalserver_primary_assignment.name.full() + ', Primary Assignment' })
+  potential_recipients.append({'current': legalserver_current_user.name.full() + ', Current User' })
+  if number_of_pro_bono_assignments > 0:
+    potential_recipients.append({'first_pro_bono': legalserver_first_pro_bono_assignment.name.full() + ', First Pro Bono User' })
+    if number_of_pro_bono_assignments > 1:
+      potential_recipients.append({'latest_pro_bono': legalserver_latest_pro_bono_assignment.name.full() + ', Latest Pro Bono User' })
+---
+code: |
+  if client_message.planned_recipient == 'client':
+    recipient = client.copy_deep('recipient')
+  elif client_message.planned_recipient == 'primary':
+    recipient = legalserver_primary_assignment.copy_deep('recipient')
+  elif client_message.planned_recipient == 'current':
+    recipient = legalserver_current_user.copy_deep('recipient')
+  elif client_message.planned_recipient == 'first_pro_bono':
+    recipient = legalserver_first_pro_bono_assignment.copy_deep('recipient')
+  elif client_message.planned_recipient == 'latest_pro_bono':
+    recipient = legalserver_latest_pro_bono_assignment.copy_deep('recipient')
+  recipient_copied = True
+---
+question: |
+  Method
+subquestion: |
+  How do you want to send the message to the recipient?
+field: client_message.method
+buttons:
+  - Email
+  - Letter
+id: method
+---
+question: |
+  Sender
+subquestion: Who is the Sender?
+field: client_message.sender
+buttons:
+  - "${ legalserver_primary_assignment.name.full() }, Primary Assingment": "primary"
+  - "${ legalserver_current_user.name.full() }, Current User": "current_user"
+id: sender_question
+---
+code: |
+  if client_message.sender == 'primary':
+    sender = legalserver_primary_assignment.copy_deep('sender')
+  else:
+    sender = legalserver_current_user.copy_deep('sender')
+  sender_copied = True
+---
+code: |
+  if legalserver_primary_assignment.name.full() == legalserver_current_user.name.full():
+    client_message.sender = 'current_user'
+  check_primary_and_current = True
+---
+template: editted_letter
+subject: |
+  ${ value(client_message.textoption).subject }
+content: |
+  ${ client_message.text }
+---
+code: |
+  email_sent_ok = send_email(to=[recipient], cc=[legalserver_current_user, legalserver_primary_assignment], bcc=[legalserver_case.email], template=editted_letter)
+---
+question: |
+  Email Sent
+subquestion: |
+  % if email_sent_ok:
+  The email was successfully sent and the case was blind carbon copied. 
+  % else:
+  The email was not successfully sent. No record was saved to the case.
+  % endif
+
+  [Return to the LegalServer Case](${legalserver_case.profile_url})
+
+buttons:
+  - Exit: exit
+sets: email_sent
+id: email_sent
+---
+question: |
+  Any Edits?
+subquestion: |
+  Recipient: ${ recipient }
+
+  Email: ${ recipient.email }
+
+  Subject: ${ value(client_message.textoption).subject }
+fields:
+  - no label: client_message.text
+    datatype: area
+    rows: 20
+    default: ${ value(client_message.textoption) }
+continue button field: letter_edits_completed
+id: edit_letter
+---
+question: |
+  Letterhead
+fields:
+  - Which Letterhead do you want to use?: client_message.letterhead
+    datatype: radio
+    code: |
+      list_templates()
+id: letterhead
+---
+attachment:
+  name: generated_letter
+  filename: ${ client_message.textoption }_${ format_date(today(), format='yyyy-MM-dd')}
+  docx template file:
+    code: |
+      client_message.letterhead
+  valid formats:
+    - pdf
+    - docx
+  variable name: generated_letter
+---
+question: |
+  Generated Letter
+subquestion: |
+  ${ generated_letter }
+
+  % if file_submitted_to_LS:
+  File saved to the LegalServer case as both a PDF and DOCX file. 
+  % else:
+  Error Uploading file to Legalserver.
+  % endif
+
+  [Return to the LegalServer Case](${legalserver_case.profile_url})
+
+event: final_letter
+buttons:
+  - Exit: exit
+id: final_letter
+---
+code: |
+  add_file_to_LS = post_file_to_legalserver_documents_webhook(legalserver_site=legalserver_site, file_path=zip_file(generated_letter.pdf, generated_letter.docx, filename='files.zip').path(), legalserver_matter_uuid=legalserver_matter_uuid)
+  file_submitted_to_LS = True
+---
+generic object: Individual
+question: |
+  ${capitalize(x.possessive('address'))}
+fields:
+  - address: x.address.address
+    address autocomplete: True
+  - unit: x.address.unit
+    required: False
+  - city: x.address.city
+  - state: x.address.state
+    code: |
+      states_list()
+    default: "TX"
+  - zip: x.address.zip
+  - county: x.address.county
+    required: False
+id: address
+---
+generic object: DACatchAll
+question: |
+  What is ${ x.object_name() }?
+fields:
+  - no label: x.value
+validation code: |
+  define(x.instanceName, x.value)
+---
+if: |
+  x.context == 'float' or (x.context == 'add' and isinstance(x.operand, float))
+generic object: DACatchAll
+question: |
+  How much is ${ x.object_name() }?
+fields:
+  - Amount: x.value
+    datatype: currency
+validation code: |
+  define(x.instanceName, x.value)
+---
+if: |
+  x.context == 'int' or (x.context == 'add' and isinstance(x.operand, int))
+generic object: DACatchAll
+question: |
+  How much is ${ x.object_name() }?
+fields:
+  - Amount: x.value
+    datatype: integer
+validation code: |
+  define(x.instanceName, x.value)
+---
+if: |
+  x.context == 'str' and x.instanceName.lower() == 'signature'
+generic object: DACatchAll
+question: |
+  Sign your name
+signature: x.value
+validation code: |
+  define(x.instanceName, x.value)
+---
+if: |
+  "time" in x.instanceName.lower()
+generic object: DACatchAll
+question: |
+  What time is ${ x.object_name() }?
+fields:
+  - Time: x.value
+    datatype: time
+validation code: |
+  define(x.instanceName, x.value)
+---
+if: |
+  "date" in x.instanceName.lower()
+generic object: DACatchAll
+question: |
+  What date is ${ x.object_name() }?
+fields:
+  - Date: x.value
+    datatype: date
+validation code: |
+  define(x.instanceName, x.value)
+---
+comment: |
+  This is the question that would have to be replaced with any additional text templates.
+question: |
+  Letter
+subquestion: Which letter to send to the recipient?
+field: client_message.textoption
+choices:
+  - Letter1: Letter1
+  - Custom Letter: CustomLetter
+id: textoption
+---
+comment: |
+  This is an example text template. Additional ones could be added as well.
+template: Letter1
+subject: |
+  Greetings, ${ recipient.name }!
+content: |
+  Thank you for applying to services with our Organization. Your case number is ${ legalserver_case.case_number }. We received your application on ${ legalserver_case.intake_date }.
+
+  We have assigned your ${ legalserver_case.legal_problem_code } case to ${ legalserver_primary_assignment }.
+
+  Sincerely,
+
+  [BR]
+  [BR]
+
+  ${ sender }
+---
+template: CustomLetter
+subject: |
+  Custom Letter
+content: |
+  Custom Letter Text to be Replaced
+
+  Sincerely,
+
+  [BR]
+  [BR]
+
+  ${ sender }
+---
+

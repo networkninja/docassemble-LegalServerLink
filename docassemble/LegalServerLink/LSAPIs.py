@@ -19,10 +19,12 @@ from docassemble.base.util import (
     date_interval,
     format_datetime,
     date_difference,
+    path_and_mimetype,
 )
 import zipfile
 from typing import List, Dict, Union, Optional
 import os.path
+from os import listdir
 
 __all__ = [
     "post_file_to_legalserver_documents_webhook",
@@ -79,6 +81,7 @@ __all__ = [
     "count_of_pro_bono_assignments",
     "is_zip_file",
     "get_legalserver_report_data",
+    "list_templates",
 ]
 
 
@@ -249,7 +252,9 @@ def post_file_to_legalserver_documents_webhook(
     )
     return_dict: Dict
     try:
-        response = requests.post(url, data=payload, files=files, headers=header_content, timeout=(3,30))
+        response = requests.post(
+            url, data=payload, files=files, headers=header_content, timeout=(3, 30)
+        )
         response.raise_for_status()
 
         if response.status_code != 200:
@@ -1041,7 +1046,9 @@ def get_legalserver_response(
             f"Get {source_type} request of {uuid} on: {legalserver_site} "
             f"included a request for custom fields: {str(params)}"
         )
-        response = requests.get(url, params=params, headers=header_content, timeout=(3,30))
+        response = requests.get(
+            url, params=params, headers=header_content, timeout=(3, 30)
+        )
         response.raise_for_status()
         if response.status_code != 200:
             return_data = {"error": response.status_code}
@@ -1150,7 +1157,9 @@ def loop_through_legalserver_responses(
                 f"Search {source_type} records for {str(params)} on: "
                 f"{legalserver_site}"
             )
-            response = requests.get(url, params=params, headers=header_content, timeout=(3,30))
+            response = requests.get(
+                url, params=params, headers=header_content, timeout=(3, 30)
+            )
             response.raise_for_status()
             if response.status_code != 200:
                 return_data = [{"error": response.status_code}]
@@ -1304,7 +1313,9 @@ def populate_tasks(
                         new_task.task_type = item["task_type"].get("lookup_value_name")
                 if item.get("deadline_type") is not None:
                     if item["deadline_type"].get("lookup_value_name") is not None:
-                        new_task.deadline_type = item["deadline_type"].get("lookup_value_name")
+                        new_task.deadline_type = item["deadline_type"].get(
+                            "lookup_value_name"
+                        )
                 if item.get("deadline") is not None:
                     new_task.deadline = item.get("deadline")
                 if item.get("private") is not None:
@@ -1312,17 +1323,26 @@ def populate_tasks(
                 if item.get("completed") is not None:
                     new_task.completed = item.get("completed")
                 if item.get("completed_by") is not None:
-                    if item['completed_by'].get('user_uuid') is not None:
-                        new_task.completed_by_uuid = item['completed_by'].get('user_uuid')
-                    if item['completed_by'].get('user_name') is not None:
-                        new_task.completed_by_name = item['completed_by'].get('user_name')
+                    if item["completed_by"].get("user_uuid") is not None:
+                        new_task.completed_by_uuid = item["completed_by"].get(
+                            "user_uuid"
+                        )
+                    if item["completed_by"].get("user_name") is not None:
+                        new_task.completed_by_name = item["completed_by"].get(
+                            "user_name"
+                        )
                 if item.get("completed_date") is not None:
-                    new_task.completed_date = item.get("completed_date")                            
+                    new_task.completed_date = item.get("completed_date")
 
                 temp_list = []
                 for user in item["users"]:
                     if user.get("user_uuid") is not None:
-                        temp_list.append({'user_uuid': user.get("user_uuid"), 'user_name': user.get("user_name")})
+                        temp_list.append(
+                            {
+                                "user_uuid": user.get("user_uuid"),
+                                "user_name": user.get("user_name"),
+                            }
+                        )
                 if temp_list:
                     new_task.users = temp_list
                 del temp_list
@@ -1345,12 +1365,12 @@ def populate_tasks(
                 if item.get("statute_of_limitations") is not None:
                     new_task.statute_of_limitations = item.get("statute_of_limitations")
                 if item.get("created_date") is not None:
-                    new_task.created_date = item.get("created_date")       
+                    new_task.created_date = item.get("created_date")
                 if item.get("created_by") is not None:
-                    if item['created_by'].get('user_uuid') is not None:
-                        new_task.created_by_uuid = item['created_by'].get('user_uuid')
-                    if item['created_by'].get('user_name') is not None:
-                        new_task.created_by_name = item['created_by'].get('user_name')                                                     
+                    if item["created_by"].get("user_uuid") is not None:
+                        new_task.created_by_uuid = item["created_by"].get("user_uuid")
+                    if item["created_by"].get("user_name") is not None:
+                        new_task.created_by_name = item["created_by"].get("user_name")
                 if item["program"].get("lookup_value_name") is not None:
                     new_task.program = item["program"].get("lookup_value_name")
                 if item.get("office") is not None:
@@ -1491,7 +1511,12 @@ def populate_events(
                 temp_list = []
                 for user in item["attendees"]:
                     if user.get("user_uuid") is not None:
-                        temp_list.append({'user_uuid': user.get("user_uuid"), 'user_name': user.get("user_name")})
+                        temp_list.append(
+                            {
+                                "user_uuid": user.get("user_uuid"),
+                                "user_name": user.get("user_name"),
+                            }
+                        )
                 if temp_list:
                     new_event.attendees = temp_list
                 del temp_list
@@ -2147,7 +2172,7 @@ def populate_assignments(
                             "user_uuid"
                         )
                     if item["assigned_by"].get("user_name") is not None:
-                        new_assignment.lassigned_by_name = item["assigned_by"].get(
+                        new_assignment.assigned_by_name = item["assigned_by"].get(
                             "user_name"
                         )
                 new_assignment.complete = True
@@ -2197,8 +2222,14 @@ def populate_litigations(
             if isinstance(item, dict):
                 # item: DAObject = item  # type annotation
                 new_litigation = litigation_list.appendObject()
-                new_litigation.litigation_uuid = item.get("litigation_uuid")
-                new_litigation.litigation_id = item.get("litigation_id")
+                if item.get("litigation_uuid") is not None:
+                    new_litigation.litigation_uuid = item.get("litigation_uuid")
+                else:
+                    new_litigation.litigation_uuid = item.get("uuid")
+                if item.get("litigation_id") is not None:
+                    new_litigation.litigation_id = item.get("litigation_id")
+                else:
+                    new_litigation.litigation_id = item.get("id")
                 if item.get("court_text") is not None:
                     new_litigation.court_text = item.get("court_text")
                 if item.get("court_id") is not None:
@@ -2621,44 +2652,44 @@ def standard_non_adverse_party_keys() -> List[str]:
 
     standard_non_adverse_party_keys = [
         "first",
-		"last",
-		"middle",
-		"suffix",
-		"date_of_birth",
-		"approximate_dob",
-		"relationship_type",
-		"uuid",
-		"language",
-		"gender",
-		"ssn"
-		"country_of_birth",
-		"race",
-		"veteran",
-		"disabled",
-		"hud_race",
-		"hud_9902_ethnicity",
-		"hud_disabling_condition",
-		"visa_number",
-		"immigration_status",
-		"citizenship_status",
-		"marital_status",
-		"government_generated_id",
-		"address_party",
-		"phone_home",
-		"phone_home_note",
-		"phone_business",
-		"phone_business_note",
-		"phone_mobile",
-		"phone_mobile_note",
-		"phone_fax",
-		"phone_fax_note",
-		"family_member",
-		"household_member",
-		"non_adverse_party",
-		"potential_conflict",
-		"id",
-		"active",
-		"email",
+        "last",
+        "middle",
+        "suffix",
+        "date_of_birth",
+        "approximate_dob",
+        "relationship_type",
+        "uuid",
+        "language",
+        "gender",
+        "ssn",
+        "country_of_birth",
+        "race",
+        "veteran",
+        "disabled",
+        "hud_race",
+        "hud_9902_ethnicity",
+        "hud_disabling_condition",
+        "visa_number",
+        "immigration_status",
+        "citizenship_status",
+        "marital_status",
+        "government_generated_id",
+        "address_party",
+        "phone_home",
+        "phone_home_note",
+        "phone_business",
+        "phone_business_note",
+        "phone_mobile",
+        "phone_mobile_note",
+        "phone_fax",
+        "phone_fax_note",
+        "family_member",
+        "household_member",
+        "non_adverse_party",
+        "potential_conflict",
+        "id",
+        "active",
+        "email",
     ]
     return standard_non_adverse_party_keys
 
@@ -4647,9 +4678,9 @@ def get_legalserver_report_data(
     report_number: int,
     report_params: Dict | None = None,
 ) -> Dict:
-    """This is a function that will get a LegalServer report and return the data 
+    """This is a function that will get a LegalServer report and return the data
     in a python dictionary.
-    
+
     This uses the LegalServer Reports API to get any report type data back from
     LegalServer and return it as a python dictionary. LegalServer Report APIs can
     return data in either JSON or XML format and this will parse either into a
@@ -4658,26 +4689,27 @@ def get_legalserver_report_data(
     returned as strings. It is also worth noting that the Reports API typically
     defaults to include hidden columns. This function defaults to exclude them
     unless otherwise specified.
-    
+
     Args:
         legalserver_site (str): The LegalServer Site being queried
         display_hidden_columns (bool): This will allow for hidden columns (in the
             LegalServer Report) to be excluded or included from the results
         report number (int): This indicates which report should be retrieved
         report_params (dict): This is available for any additional filters
-        
+
     Returns:
         This returns a dictionary of the reports API results.
-        
+
     Raises:
-        This can raise exceptions for any standard errors from the Requests API handler."""
+        This can raise exceptions for any standard errors from the Requests API handler.
+    """
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
 
     url = f"https://{legalserver_site}.legalserver.org/modules/report/api_export.php"
 
     if not report_params:
         report_params = {}
-    
+
     report_params["display_hidden_columns"] = display_hidden_columns
 
     report_api_key = (
@@ -4689,15 +4721,19 @@ def get_legalserver_report_data(
     report_params["load"] = str(report_number)  # type: ignore
     dict_response = {}  # type: ignore
     try:
-        log(f'Attempting to retrive the following report {str(report_params)} from {legalserver_site}')
-        response = requests.get(headers=header_content, url=url, params=report_params, timeout=(3,30))
+        log(
+            f"Attempting to retrive the following report {str(report_params)} from {legalserver_site}"
+        )
+        response = requests.get(
+            headers=header_content, url=url, params=report_params, timeout=(3, 30)
+        )
         response.raise_for_status()
-        log(f'data received. headers: {str(response.headers)}, data: {response.text}')
+        log(f"data received. headers: {str(response.headers)}, data: {response.text}")
         content_type = response.headers.get("Content-Type", "")
 
         if "application/xml" in content_type or "text/xml" in content_type:
             # Parse the XML response using lxml and convert it to JSON
-            
+
             xml_data = etree.fromstring(response.text)  # type: ignore
 
             # Create a function to recursively convert an ElementTree into a dictionary
@@ -4720,7 +4756,6 @@ def get_legalserver_report_data(
                 # Use the xml_to_dict function to recursively convert XML to a dictionary
                 dict_response = element_to_dict(xml_data)
 
-
         elif "application/json" in content_type:
             # The response is already JSON
             dict_response = response.json()
@@ -4742,3 +4777,34 @@ def get_legalserver_report_data(
         return {"error": e}
 
     return dict_response
+
+
+def list_templates(package_name: str = "") -> List:
+    """This is a helper function that will list all of the files in the data/templates
+    directory of a given Docassemble Package.
+
+    Args:
+        package_name (str): The package being queried for templates.
+            If not included, it defaults to the current package.
+
+    Returns:
+        This returns a list of the files available in the Templates directory.
+    """
+
+    if package_name:
+        if "docassemble-" in package_name:
+            package = package_name.replace("docassemble-", "docassemble.")
+        else:
+            package = package_name
+        template_path = f"{package}:data/templates/README.md"
+    else:
+        template_path = "data/templates/README.md"
+
+    files = [
+        str(path)
+        for path in os.listdir(os.path.dirname(path_and_mimetype(template_path)[0]))
+        if not path.startswith(".")
+    ]
+    if "README.md" in files:
+        files.remove("README.md")
+    return files

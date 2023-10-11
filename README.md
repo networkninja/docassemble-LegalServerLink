@@ -268,6 +268,36 @@ files and add them to a case note on the case.
 For simplicty, the public functions created by this Docassemble package are
 described in [Functions](Functions.md).
 
+## Sample Docassemble Interview
+
+A sample file `sample_letter.yml` is available in this package. This Docassemble
+interview has multiple steps in the creation of a letter to a client or attorney.
+
+The offered text of the communication is stored as an optional [`DALazyTemplate`](https://docassemble.org/docs/objects.html#DALazyTemplate)
+in the interview file so that it can use Mako formatting
+and take any variables from the LegalServer Data. This means that any logic,
+formatting, or variables can be included in the letter.
+
+After it collects the LegalServer data, it then allows for the following choices:
+
+* Recipient (default options include Client, Primary Attorney, Current User,
+First Pro Bono Attorney, or Latest Pro Bono Attorney)
+* Sender (Primary Attorney or Current User)
+* Method of Email or printed Letter
+* Letter Text (selecting the appropriate `DALazyTemplate`)
+* Modifications to the text
+* Letterhead choice (if sent via Letter)
+
+The package then returns the files to the case if a Letter is sent. If an Email
+is sent, it BCC's the case.
+
+Any of the questions being asked in the interview could be hard coded
+instead of questions for the user to answer. There is an example
+code block that sets defaults. This example also uses the
+[DACatchAll](https://docassemble.org/docs/fields.html#catchall) features to
+ensure that any used variables have already been defined in case the selected
+data was null in LegalServer.
+
 ## ChangeLog
 
 See [ChangeLog](ChangeLog.md).
