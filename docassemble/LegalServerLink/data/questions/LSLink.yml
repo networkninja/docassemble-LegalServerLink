@@ -1,8 +1,8 @@
 ---
-modules: 
+modules:
   - .LSAPIs
 ---
-metadata:
+comment:
   title: |
     LegalServer Docassemble Link
   short title: |
@@ -10,7 +10,7 @@ metadata:
   description: |
     This interview links Docassemble to LegalServer through LegalServer's APIs.
   authors:
-    - name: Network Ninja
+    - name: LegalServer
       organization: Network Ninja, Inc.
   revision_date: 2023-09-12
 ---
@@ -18,7 +18,7 @@ if: client_is_organization
 objects:
   - client: Person
 ---
-objects: 
+objects:
   - client: Individual
   - legalserver_case: DAObject
   - legalserver_assignments: DAList.using(object=DAObject, there_are_any=True, auto_gather=False, complete_attribute='complete')
@@ -31,48 +31,45 @@ objects:
   - legalserver_events: DAList.using(object=DAObject, there_are_any=True, auto_gather=False, complete_attribute='complete')
   - legalserver_tasks: DAList.using(object=DAObject, there_are_any=True, auto_gather=False, complete_attribute='complete')
   - client.additional_names: DAList.using(object=IndividualName, there_are_any=True, auto_gather=False, complete_attribute='complete')
-  - legalserver_adverse_parties: DAList.using(object=Person, there_are_any=True, auto_gather=False, complete_attribute='complete')  
-  - legalserver_non_adverse_parties: DAList.using(object=Person, there_are_any=True, auto_gather=False, complete_attribute='complete')  
+  - legalserver_adverse_parties: DAList.using(object=Person, there_are_any=True, auto_gather=False, complete_attribute='complete')
+  - legalserver_non_adverse_parties: DAList.using(object=Person, there_are_any=True, auto_gather=False, complete_attribute='complete')
   - legalserver_primary_assignment: Individual
   - legalserver_first_pro_bono_assignment: Individual
   - legalserver_latest_pro_bono_assignment: Individual
   - legalserver_pro_bono_assignments: DAList.using(object=Individual, there_are_any=False, auto_gather=False, complete_attribute='complete')
   - legalserver_current_user: Individual
 ---
-question: 
+question: |
   LegalServer Site and Case
-fields: 
+fields:
   - What is the LegalServer Case UUID?: legalserver_matter_uuid
   - What is the LegalServer site abbreviation: legalserver_site_abbreviation
   - What is the LegalServer site type: legalserver_site_type
     input type: radio
-    choices: 
-      code:
-        legalserver_site_type_list
+    choices:
+      code: legalserver_site_type_list
 ---
-code: | 
+code: |
   legalserver_site_type_list = ['Live', 'Demo']
   if 'docassemble-dev.legalserver' in interview_url():
     legalserver_site_type_list.append('Test')
     legalserver_site_type_list.append('Dev')
 ---
-question:
+question: |
   LegalServer Current User
 fields:
   - What is the LegalServer Current User UUID?: legalserver_current_user_uuid
-comment: | 
-    default: c285b062-4c39-4a50-9c49-e516a91e7556
 ---
-question: | 
+question: |
   Data
-subquestion: | 
+subquestion: |
   Client: ${ client }
 
   Is this a Group Client: ${ legalserver_data.get('is_group') }
-  
+
 continue button field: testing
 ---
-code: | 
+code: |
   if legalserver_site_type.lower() == 'live':
     legalserver_site = legalserver_site_abbreviation.lower()
   elif legalserver_site_type.lower() == 'demo':
@@ -81,14 +78,14 @@ code: |
     legalserver_site = legalserver_site_abbreviation.lower() + "." + legalserver_site_type.lower()
   set_legalserver_site = True
 ---
-code: | 
+code: |
   checked_for_stashed_data
   legalserver_matter_uuid
   set_legalserver_site
   raise_errors_getting_legalserver_data
   collect_initial_legalserver_data = True
 ---
-code: | 
+code: |
   stashed_secret = url_args.get('stashed_secret', None)
   stashed_key = url_args.get('stashed_key', None)
   if stashed_secret and stashed_key:  
@@ -98,7 +95,7 @@ code: |
       log('Stored Data imported Successfully')
   checked_for_stashed_data = True
 ---
-code: | 
+code: |
   token_check = check_legalserver_token(legalserver_site=legalserver_site)
   if 'error' in token_check:
     check_legalserver_token_exists = False
@@ -106,11 +103,11 @@ code: |
   else: 
     check_legalserver_token_exists = True
 ---
-question: | 
-  LegalServer Data Error 
-subquestion: | 
+question: |
+  LegalServer Data Error
+subquestion: |
   The attempt to get case data resulted in an error.
-  
+
   % for item in legalserver_error_source:
   * ${ item['source']} - ${ str(item['error']) }. 
   % endfor
@@ -118,11 +115,11 @@ buttons:
   - Exit: exit
   - Restart: restart
 event: legalserver_data_error_ending
----   
-code: | 
+---
+code: |
   legalserver_error_source = []
 ---
-code: | 
+code: |
   legalserver_data = get_matter_details(legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid, custom_fields=[], custom_fields_services=[], custom_fields_litigations=[], custom_fields_charges=[])
   if 'error' in legalserver_data:
     legalserver_data_error = True
@@ -130,37 +127,37 @@ code: |
   else: 
     legalserver_data_error = False
 ---
-code: | 
+code: |
   if legalserver_data.get('is_group'):
     client_is_organization = True
   else: 
     client_is_organization = False
   check_for_legalserver_client_organization = True
----  
-code: | 
+---
+code: |
   check_for_legalserver_client_organization
   raise_errors_getting_legalserver_data
   populate_client(client=client, legalserver_data=legalserver_data)  
   parse_client_data = True
 ---
-code: | 
+code: |
   if not check_legalserver_token_exists:
     legalserver_data_error_ending
   if legalserver_data_error:
     legalserver_data_error_ending
   raise_errors_getting_legalserver_data = True
 ---
-code: | 
+code: |
   raise_errors_getting_legalserver_data
   populate_litigations(litigation_list=legalserver_litigations, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
   parse_legalserver_litigation_data = True
 ---
-code: | 
+code: |
   raise_errors_getting_legalserver_data
   populate_adverse_parties(adverse_party_list=legalserver_adverse_parties, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
   parse_legalserver_adverse_party_data = True
 ---
-code: | 
+code: |
   raise_errors_getting_legalserver_data
   populate_non_adverse_parties(non_adverse_party_list=legalserver_non_adverse_parties, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
   parse_legalserver_non_adverse_party_data = True
@@ -170,52 +167,52 @@ code: |
   populate_income(income_list=legalserver_incomes, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
   parse_legalserver_income_data = True
 ---
-code: | 
+code: |
   raise_errors_getting_legalserver_data
   populate_notes(note_list=legalserver_notes, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
   parse_legalserver_note_data = True
 ---
-code: | 
+code: |
   raise_errors_getting_legalserver_data
   populate_assignments(assignment_list=legalserver_assignments, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
   parse_legalserver_assignment_data = True
 ---
-code: | 
+code: |
   raise_errors_getting_legalserver_data
   populate_charges(charge_list=legalserver_charges, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
   parse_legalserver_charge_data = True
 ---
-code: | 
+code: |
   raise_errors_getting_legalserver_data
   populate_case(case=legalserver_case, legalserver_data=legalserver_data)
   parse_legalserver_case_data = True
 ---
-code: | 
+code: |
   raise_errors_getting_legalserver_data
   populate_services(services_list=legalserver_services, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
   parse_legalserver_service_data = True
 ---
-code: | 
+code: |
   raise_errors_getting_legalserver_data
   populate_events(event_list=legalserver_events, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
-  parse_legalserver_event_data = True  
+  parse_legalserver_event_data = True
 ---
-code: | 
+code: |
   raise_errors_getting_legalserver_data
   populate_tasks(task_list=legalserver_tasks, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
-  parse_legalserver_task_data = True  
+  parse_legalserver_task_data = True
 ---
-code: | 
+code: |
   raise_errors_getting_legalserver_data
   populate_contacts(contact_list=legalserver_contacts, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)  
-  parse_legalserver_contact_data = True    
+  parse_legalserver_contact_data = True
 ---
-code: |   
+code: |
   raise_errors_getting_legalserver_data
   populate_additional_names(additional_name_list=client.additional_names, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
   parse_legalserver_additional_name_data = True
 ---
-code: | 
+code: |
   raise_errors_getting_legalserver_data
   populate_pro_bono_assignments(pro_bono_assignment_list=legalserver_pro_bono_assignments,assignment_list=legalserver_assignments,legalserver_data=legalserver_data, legalserver_matter_uuid=legalserver_matter_uuid, legalserver_site = legalserver_site)
   number_of_pro_bono_assignments = count_of_pro_bono_assignments(pro_bono_assignment_list=legalserver_pro_bono_assignments)
@@ -229,12 +226,12 @@ code: |
   populate_primary_assignment(primary_assignment=legalserver_primary_assignment,assignment_list=legalserver_assignments,legalserver_data=legalserver_data, legalserver_matter_uuid=legalserver_matter_uuid, legalserver_site = legalserver_site)
   parse_legalserver_primary_assignment = True
 ---
-code: | 
+code: |
   raise_errors_getting_legalserver_data
   populate_current_user(legalserver_current_user=legalserver_current_user, legalserver_current_user_uuid=legalserver_current_user_uuid, legalserver_site = legalserver_site)
   parse_legalserver_current_user = True
 ---
-code: | 
+code: |
   raise_errors_getting_legalserver_data
   parse_client_data
   parse_legalserver_assignment_data

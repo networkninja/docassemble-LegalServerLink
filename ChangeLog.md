@@ -41,6 +41,21 @@ Format:
 ### Security
 - 
 -->
+## [1.0.3]
+
+* Added missing keys to the matter list to prevent them from displaying as
+custom fields.
+
+## [1.0.2]
+
+* Added dependency to python tests automated workflow to fix tests.
+
+## [1.0.1]
+
+### Added
+
+* Sample Letter Interview
+
 ## [1.0.0]
 
 ### Added

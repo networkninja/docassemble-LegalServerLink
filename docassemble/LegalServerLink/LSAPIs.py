@@ -2939,6 +2939,11 @@ def standard_matter_keys() -> List[str]:
         "military_service",
         "sharepoint_site_library",
         "sending_site_identification_number",
+        "hud_ami_category",
+        "hud_area_median_income_percentage",
+        "hud_entity_poverty_band",
+        "hud_statewide_median_income_percentage",
+        "hud_statewide_poverty_band",
         "assignments",
         "charges",
         "services",
@@ -2946,6 +2951,11 @@ def standard_matter_keys() -> List[str]:
         "incomes",
         "events",
         "notes",
+        "additional_names",
+        "adverse_parties",
+        "contacts",
+        "non_adverse_parties",
+        "tasks",
     ]
     return standard_matter_keys
 
