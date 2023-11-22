@@ -72,6 +72,7 @@ __all__ = [
     "standard_matter_keys",
     "standard_adverse_party_keys",
     "standard_non_adverse_party_keys",
+    "standard_client_home_address_keys",
     "populate_primary_assignment",
     "populate_current_user",
     "populate_first_pro_bono_assignment",
@@ -1060,7 +1061,7 @@ def get_legalserver_response(
         else:
             log(
                 f"Got LegalServer {source_type} data for {uuid} on "
-                f"{legalserver_site}. Response{str(response.status_code)}"
+                f"{legalserver_site}. Response {str(response.status_code)}"
             )
             return_data = response.json().get("data")
     except requests.exceptions.ConnectionError as e:
@@ -1154,8 +1155,7 @@ def loop_through_legalserver_responses(
     while counter < total_number_of_pages and total_number_of_pages > 0:
         try:
             log(
-                f"Search {source_type} records for {str(params)} on: "
-                f"{legalserver_site}"
+                f"Search {source_type} records with params: {str(params)} on: " f"{url}"
             )
             response = requests.get(
                 url, params=params, headers=header_content, timeout=(3, 30)
@@ -1164,15 +1164,15 @@ def loop_through_legalserver_responses(
             if response.status_code != 200:
                 return_data = [{"error": response.status_code}]
                 log(
-                    f"Error searching LegalServer {source_type} data for {str(params)} "
-                    f"on {legalserver_site}. {str(response.status_code)}: "
+                    f"Error searching LegalServer {source_type} data for params:"
+                    f" {str(params)} on {url}. {str(response.status_code)}: "
                     f"{str(response.json())}"
                 )
                 break
             else:
                 log(
-                    f"Got LegalServer {source_type} data for {str(params)} "
-                    f"on {legalserver_site}. Response{str(response.status_code)}"
+                    f"Got LegalServer {source_type} data for params: {str(params)} "
+                    f"on {url}. Response {str(response.status_code)}"
                 )
                 return_data.extend(response.json().get("data"))
                 if response.json().get("total_number_of_pages") is not None:
@@ -1184,25 +1184,25 @@ def loop_through_legalserver_responses(
         except requests.exceptions.ConnectionError as e:
             log(
                 f"Error getting LegalServer {source_type} data for {str(params)} "
-                f"on {legalserver_site}. Exception raised: {str(e)}."
+                f"on {url}. Exception raised: {str(e)}."
             )
             return [{"error": e}]
         except requests.exceptions.HTTPError as e:
             log(
                 f"Error getting LegalServer {source_type} data for {str(params)} "
-                f"on {legalserver_site}. Exception raised: {str(e)}."
+                f"on {url}. Exception raised: {str(e)}."
             )
             return [{"error": e}]
         except requests.exceptions.Timeout as e:
             log(
                 f"Error getting LegalServer {source_type} data for {str(params)} "
-                f"on {legalserver_site}. Exception raised: {str(e)}."
+                f"on {url}. Exception raised: {str(e)}."
             )
             return [{"error": e}]
         except Exception as e:
             log(
                 f"Error searching LegalServer {source_type} data for {str(params)} "
-                f"on {legalserver_site}. Exception raised: {str(e)}."
+                f"on {url}. Exception raised: {str(e)}."
             )
             return [{"error": "Unknown"}]
     return return_data
@@ -1217,7 +1217,7 @@ def search_task_data(
 ) -> List[Dict]:
     """Search task data in LegalServer for a specific matter.
 
-    This uses LegalServer's Search tasks API to get back details of any events
+    This uses LegalServer's Search tasks API to get back details of any tasks
     that match a given set of parameters. Typically, this will be limited to a
     single case using the matter's UUID, but it does not have to be limited.
 
@@ -1231,7 +1231,7 @@ def search_task_data(
         custom_fields (list): A optional list of custom fields to include.
 
     Returns:
-        A list of dictionaries of matching events.
+        A list of dictionaries of matching tasks.
 
     Raises:
         Errors are handled in the response. Errors will be present when the
@@ -1272,7 +1272,7 @@ def populate_tasks(
     This is a keyword defined function that takes a DAList of DAObjects and
     populates it with the task details related to a case. If the general
     legalserver_data from the `get_matter_details` response is not included, it
-    makes an API call using the `search_event_data` function.
+    makes an API call using the `search_task_data` function.
 
     Args:
         task_list (DAList[DAObject]): DAList of DAObjects.
@@ -1458,7 +1458,9 @@ def populate_events(
     This is a keyword defined function that takes a DAList of DAObjects and
     populates it with the event details related to a case. If the general
     legalserver_data from the `get_matter_details` response is not included, it
-    makes an API call using the `search_event_data` function.
+    makes an API call using the `search_event_data` function. Note that this
+    ignores the `outreaches` key in the event response since this is designed to
+    connect cases to events and does not currently cover outreaches.
 
     Args:
         event_list (DAList[DAObject]): DAList of DAObjects.
@@ -1507,7 +1509,8 @@ def populate_events(
                     new_event.judge = item.get("judge")
                 if item.get("attendees") is not None:
                     new_event.attendees = item.get("attendees")
-
+                if item.get("private_event") is not None:
+                    new_event.private_event = item.get("private_event")
                 temp_list = []
                 for user in item["attendees"]:
                     if user.get("user_uuid") is not None:
@@ -1521,17 +1524,23 @@ def populate_events(
                     new_event.attendees = temp_list
                 del temp_list
 
-                if item.get("dynamic_process") is not None:
-                    if item["dynamic_process"].get("dynamic_process_id") is not None:
-                        new_event.dynamic_process_id = item["dynamic_process"].get(
+                if item.get("dynamic_process_id") is not None:
+                    if item["dynamic_process_id"].get("dynamic_process_id") is not None:
+                        new_event.dynamic_process_id = item["dynamic_process_id"].get(
                             "dynamic_process_id"
                         )
-                    if item["dynamic_process"].get("dynamic_process_uuid") is not None:
-                        new_event.dynamic_process_uuid = item["dynamic_process"].get(
+                    if (
+                        item["dynamic_process_id"].get("dynamic_process_uuid")
+                        is not None
+                    ):
+                        new_event.dynamic_process_uuid = item["dynamic_process_id"].get(
                             "dynamic_process_uuid"
                         )
-                    if item["dynamic_process"].get("dynamic_process_name") is not None:
-                        new_event.dynamic_process_name = item["dynamic_process"].get(
+                    if (
+                        item["dynamic_process_id"].get("dynamic_process_name")
+                        is not None
+                    ):
+                        new_event.dynamic_process_name = item["dynamic_process_id"].get(
                             "dynamic_process_name"
                         )
                 # start and end dates of None if not otherwise
@@ -1674,15 +1683,16 @@ def populate_additional_names(
             new_name.uuid = item.get("uuid")
             new_name.id = item.get("id")
             if item.get("first") is not None:
-                new_name.name.first = item.get("first")
+                new_name.first = item.get("first")
             if item.get("middle") is not None:
-                new_name.name.middle = item.get("middle")
+                new_name.middle = item.get("middle")
             if item.get("type") is not None:
-                new_name.type = item.get("type")
+                if item["type"].get("lookup_value_name") is not None:
+                    new_name.type = item["type"].get("lookup_value_name")
             if item.get("last") is not None:
-                new_name.name.last = item.get("last")
+                new_name.last = item.get("last")
             if item.get("suffix") is not None:
-                new_name.name.suffix = item.get("suffix")
+                new_name.suffix = item.get("suffix")
 
             new_name.complete = True
 
@@ -1746,25 +1756,32 @@ def populate_adverse_parties(
                     new_ap.name.suffix = item.get("suffix")
             else:
                 new_ap.name = item.get("organization_name")
-            if item["business_type"].get("lookup_value_name") is not None:
-                new_ap.business_type = item["business_type"].get("lookup_value_name")
+            if item.get("business_type") is not None:
+                if item.get("business_type").get("lookup_value_name") is not None:
+                    new_ap.business_type = item["business_type"].get(
+                        "lookup_value_name"
+                    )
             if item.get("date_of_birth") is not None:
                 new_ap.date_of_birth = item.get("date_of_birth")
             if item.get("approximate_dob") is not None:
                 new_ap.approximate_dob = item.get("approximate_dob")
-            if item["relationship_type"].get("lookup_value_name") is not None:
-                new_ap.relationship_type = item["relationship_type"].get(
-                    "lookup_value_name"
-                )
-            if item["language"].get("lookup_value_name") is not None:
-                new_ap.language_name = item["language"].get("lookup_value_name")
-                if (
-                    language_code_from_name(item["language"].get("lookup_value_name"))
-                    != "Unknown"
-                ):
-                    new_ap.language = language_code_from_name(
-                        item["language"].get("lookup_value_name")
+            if item.get("relationship_type") is not None:
+                if item["relationship_type"].get("lookup_value_name") is not None:
+                    new_ap.relationship_type = item["relationship_type"].get(
+                        "lookup_value_name"
                     )
+            if item.get("language") is not None:
+                if item["language"].get("lookup_value_name") is not None:
+                    new_ap.language_name = item["language"].get("lookup_value_name")
+                    if (
+                        language_code_from_name(
+                            item["language"].get("lookup_value_name")
+                        )
+                        != "Unknown"
+                    ):
+                        new_ap.language = language_code_from_name(
+                            item["language"].get("lookup_value_name")
+                        )
             if item.get("height") is not None:
                 new_ap.height = item.get("height")
             if item.get("weight") is not None:
@@ -1773,44 +1790,58 @@ def populate_adverse_parties(
                 new_ap.eye_color = item.get("eye_color")
             if item.get("hair_color") is not None:
                 new_ap.hair_color = item.get("hair_color")
-            if item["race"].get("lookup_value_name") is not None:
-                new_ap.race = item["race"].get("lookup_value_name")
+            if item.get("race") is not None:
+                if item["race"].get("lookup_value_name") is not None:
+                    new_ap.race = item["race"].get("lookup_value_name")
             if item.get("drivers_license") is not None:
                 new_ap.drivers_license = item.get("drivers_license")
             if item.get("visa_number") is not None:
                 new_ap.visa_number = item.get("visa_number")
-            if item["immigration_status"].get("visa_number") is not None:
-                new_ap.immigration_status = item["immigration_status"].get(
-                    "visa_number"
-                )
-            if item["marital_status"].get("visa_number") is not None:
-                new_ap.marital_status = item["marital_status"].get("visa_number")
+            if item.get("immigration_status") is not None:
+                if item["immigration_status"].get("lookup_value_name") is not None:
+                    new_ap.immigration_status = item["immigration_status"].get(
+                        "lookup_value_name"
+                    )
+            if item.get("marital_status") is not None:
+                if item["marital_status"].get("lookup_value_name") is not None:
+                    new_ap.marital_status = item["marital_status"].get(
+                        "lookup_value_name"
+                    )
+            if item.get("gender") is not None:
+                if item["gender"].get("lookup_value_name") is not None:
+                    new_ap.gender = item["gender"].get("lookup_value_name")
+            if item.get("ssn") is not None:
+                new_ap.ssn = item.get("ssn")
             if item.get("government_generated_id") is not None:
                 # this is a list in the response, but it is not a list of lookups.
-                new_ap.government_generated_id = item.get("government_generated_id")
-            if item.get("street") is not None:
-                new_ap.address.address = item.get("visa_number")
+                if len(item.get("government_generated_id")) > 0:
+                    new_ap.government_generated_id = item.get("government_generated_id")
+            if item.get("street_address") is not None:
+                new_ap.address.address = item.get("street_address")
             if item.get("apt_num") is not None:
-                new_ap.address.unit = item.get("visa_number")
-            if item.get("street_2") is not None:
-                new_ap.address.street_2 = item.get("visa_number")
+                new_ap.address.unit = item.get("apt_num")
+            if item.get("street_address_2") is not None:
+                new_ap.address.street_2 = item.get("street_address_2")
             if item.get("addr2") is not None:
-                new_ap.address.addr2 = item.get("visa_number")
+                new_ap.address.addr2 = item.get("addr2")
             if item.get("city") is not None:
-                new_ap.address.city = item.get("visa_number")
+                new_ap.address.city = item.get("city")
             if item.get("state") is not None:
-                new_ap.address.state = item.get("visa_number")
+                new_ap.address.state = item.get("state")
             if item.get("zip_code") is not None:
-                new_ap.address.zip = item.get("visa_number")
-            if item["county"].get("lookup_value_name") is not None:
-                new_ap.address.county = item["county"].get("lookup_value_name")
-                new_ap.address.county_uuid = item["county"].get("lookup_value_uuid")
-                if item["county"].get("lookup_value_state") is not None:
-                    new_ap.address.county_state = item["county"].get(
-                        "lookup_value_state"
-                    )
-                if item["county"].get("lookup_value_FIPS") is not None:
-                    new_ap.address.county_FIPS = item["county"].get("lookup_value_FIPS")
+                new_ap.address.zip = item.get("zip_code")
+            if item.get("county") is not None:
+                if item["county"].get("lookup_value_name") is not None:
+                    new_ap.address.county = item["county"].get("lookup_value_name")
+                    new_ap.address.county_uuid = item["county"].get("lookup_value_uuid")
+                    if item["county"].get("lookup_value_state") is not None:
+                        new_ap.address.county_state = item["county"].get(
+                            "lookup_value_state"
+                        )
+                    if item["county"].get("lookup_value_FIPS") is not None:
+                        new_ap.address.county_FIPS = item["county"].get(
+                            "lookup_value_FIPS"
+                        )
             if item.get("phone_home") is not None:
                 new_ap.phone_home = item.get("phone_home")
             if item.get("phone_home_note") is not None:
@@ -1908,8 +1939,6 @@ def populate_non_adverse_parties(
                     new_nap.name.suffix = item.get("suffix")
             else:
                 new_nap.name = item.get("organization_name")
-            if item["business_type"].get("lookup_value_name") is not None:
-                new_nap.business_type = item["business_type"].get("lookup_value_name")
             if item.get("date_of_birth") is not None:
                 new_nap.date_of_birth = item.get("date_of_birth")
             if item.get("approximate_dob") is not None:
@@ -1927,43 +1956,66 @@ def populate_non_adverse_parties(
                     new_nap.language = language_code_from_name(
                         item["language"].get("lookup_value_name")
                     )
-            if item.get("height") is not None:
-                new_nap.height = item.get("height")
-            if item.get("weight") is not None:
-                new_nap.weight = item.get("weight")
-            if item.get("eye_color") is not None:
-                new_nap.eye_color = item.get("eye_color")
-            if item.get("hair_color") is not None:
-                new_nap.hair_color = item.get("hair_color")
+            if item.get("gender") is not None:
+                if item["gender"].get("lookup_value_name") is not None:
+                    new_nap.gender = item["gender"].get("lookup_value_name")
+            if item.get("ssn") is not None:
+                new_nap.ssn = item.get("ssn")
+            if item.get("country_of_birth") is not None:
+                ## TODO country codes
+                if item["country_of_birth"].get("lookup_value_name") is not None:
+                    new_nap.country_of_birth_name = item["country_of_birth"].get(
+                        "lookup_value_name"
+                    )
             if item["race"].get("lookup_value_name") is not None:
                 new_nap.race = item["race"].get("lookup_value_name")
-            if item.get("drivers_license") is not None:
-                new_nap.drivers_license = item.get("drivers_license")
+            if item.get("veteran") is not None:
+                new_nap.veteran = item.get("veteran")
+            if item.get("disabled") is not None:
+                new_nap.disabled = item.get("disabled")
+            if item.get("hud_race") is not None:
+                if item["hud_race"].get("lookup_value_name") is not None:
+                    new_nap.hud_race = item["hud_race"].get("lookup_value_name")
+            if item.get("hud_9902_ethnicity") is not None:
+                if item["hud_9902_ethnicity"].get("hud_9902_ethnicity") is not None:
+                    new_nap.hud_9902_ethnicity = item["hud_9902_ethnicity"].get(
+                        "lookup_value_name"
+                    )
+            if item.get("hud_disabling_condition") is not None:
+                if item["hud_disabling_condition"].get("lookup_value_name") is not None:
+                    new_nap.hud_disabling_condition = item[
+                        "hud_disabling_condition"
+                    ].get("lookup_value_name")
             if item.get("visa_number") is not None:
                 new_nap.visa_number = item.get("visa_number")
-            if item["immigration_status"].get("visa_number") is not None:
+            if item["immigration_status"].get("lookup_value_name") is not None:
                 new_nap.immigration_status = item["immigration_status"].get(
-                    "visa_number"
+                    "lookup_value_name"
                 )
-            if item["marital_status"].get("visa_number") is not None:
-                new_nap.marital_status = item["marital_status"].get("visa_number")
+            if item["citizenship_status"].get("lookup_value_name") is not None:
+                new_nap.citizenship_status = item["citizenship_status"].get(
+                    "lookup_value_name"
+                )
+            if item["marital_status"].get("lookup_value_name") is not None:
+                new_nap.marital_status = item["marital_status"].get("lookup_value_name")
             if item.get("government_generated_id") is not None:
                 # this is a list in the response, but it is not a list of lookups.
-                new_nap.government_generated_id = item.get("government_generated_id")
-            if item.get("street") is not None:
-                new_nap.address.address = item.get("visa_number")
+                if len(item.get("government_generated_id")) > 0:
+                    new_nap.government_generated_id = item.get(
+                        "government_generated_id"
+                    )
+            if item.get("street_address") is not None:
+                new_nap.address.address = item.get("street_address")
             if item.get("apt_num") is not None:
-                new_nap.address.unit = item.get("visa_number")
-            if item.get("street_2") is not None:
-                new_nap.address.street_2 = item.get("visa_number")
+                new_nap.address.unit = item.get("apt_num")
             if item.get("addr2") is not None:
-                new_nap.address.addr2 = item.get("visa_number")
+                new_nap.address.addr2 = item.get("addr2")
             if item.get("city") is not None:
-                new_nap.address.city = item.get("visa_number")
+                new_nap.address.city = item.get("city")
             if item.get("state") is not None:
-                new_nap.address.state = item.get("visa_number")
+                new_nap.address.state = item.get("state")
             if item.get("zip_code") is not None:
-                new_nap.address.zip = item.get("visa_number")
+                new_nap.address.zip = item.get("zip_code")
             if item["county"].get("lookup_value_name") is not None:
                 new_nap.address.county = item["county"].get("lookup_value_name")
                 new_nap.address.county_uuid = item["county"].get("lookup_value_uuid")
@@ -1991,10 +2043,14 @@ def populate_non_adverse_parties(
                 new_nap.phone_fax = item.get("phone_fax")
             if item.get("phone_fax_note") is not None:
                 new_nap.phone_fax_note = item.get("phone_fax_note")
-            if item.get("adverse_party_alert") is not None:
-                new_nap.adverse_party_alert = item.get("adverse_party_alert")
-            if item.get("adverse_party_note") is not None:
-                new_nap.adverse_party_note = item.get("adverse_party_note")
+            if item.get("family_member") is not None:
+                new_nap.family_member = item.get("family_member")
+            if item.get("household_member") is not None:
+                new_nap.household_member = item.get("household_member")
+            if item.get("potential_conflict") is not None:
+                new_nap.potential_conflict = item.get("potential_conflict")
+            if item.get("non_adverse_party") is not None:
+                new_nap.non_adverse_party = item.get("non_adverse_party")
             if item.get("active") is not None:
                 new_nap.active = item.get("active")
             if item.get("email") is not None:
@@ -2425,6 +2481,7 @@ def standard_services_keys() -> List[str]:
         "funding_code",
         "service_uuid",
         "charges",
+        "matter_id",
     ]
     return standard_services_keys
 
@@ -2557,6 +2614,35 @@ def standard_organization_keys() -> List[str]:
     return standard_organization_keys
 
 
+def standard_client_home_address_keys() -> List[str]:
+    """Return the list of keys present in a Client Home Address response from
+    LegalServer to better identify the GIS fields.
+
+    Args:
+        None.
+
+    Returns:
+        A list of strings.
+    """
+    standard_client_home_address_keys = [
+        "street",
+        "street_2",
+        "apt_num",
+        "city",
+        "state",
+        "zip",
+        "county",
+        "lon",
+        "lat",
+        "census_tract",
+        "geocoding_failed",
+        "state_legislature_district_upper",
+        "state_legislature_district_lower",
+        "congressional_district",
+    ]
+    return standard_client_home_address_keys
+
+
 def standard_contact_keys() -> List[str]:
     """Return the list of keys present in a Contact response from LegalServer to
     better identify the custom fields.
@@ -2635,6 +2721,9 @@ def standard_event_keys() -> List[str]:
         "program",
         "office",
         "event_uuid",
+        "dynamic_process_id",
+        "outreaches",
+        "private_event",
     ]
     return standard_event_keys
 
@@ -2690,6 +2779,13 @@ def standard_non_adverse_party_keys() -> List[str]:
         "id",
         "active",
         "email",
+        "addr2",
+        "apt_num",
+        "city",
+        "county",
+        "state",
+        "street_address",
+        "zip_code",
     ]
     return standard_non_adverse_party_keys
 
@@ -2741,6 +2837,15 @@ def standard_adverse_party_keys() -> List[str]:
         "active",
         "email",
         "employer",
+        "addr2",
+        "apt_num",
+        "county",
+        "gender",
+        "ssn",
+        "state",
+        "street_address",
+        "street_address_2",
+        "zip_code",
     ]
 
     return standard_adverse_party_keys
@@ -3311,7 +3416,13 @@ def populate_client(
             client.employment_status = legalserver_data.get("employment_status")
 
     if legalserver_data.get("preferred_phone_number") is not None:
-        client.preferred_phone_number = legalserver_data.get("preferred_phone_number")
+        if (
+            legalserver_data["preferred_phone_number"].get("lookup_value_name")
+            is not None
+        ):
+            client.preferred_phone_number = legalserver_data[
+                "preferred_phone_number"
+            ].get("lookup_value_name")
     if legalserver_data.get("home_phone") is not None:
         client.phone_number = legalserver_data.get("home_phone")
     if legalserver_data.get("mobile_phone") is not None:
@@ -3364,7 +3475,9 @@ def populate_client(
         client.interpreter = legalserver_data.get("interpreter")
     if legalserver_data.get("marital_status") is not None:
         if legalserver_data["marital_status"].get("lookup_value_name") is not None:
-            client.marital_status = legalserver_data.get("marital_status")
+            client.marital_status = legalserver_data["marital_status"].get(
+                "lookup_value_name"
+            )
     if legalserver_data.get("citizenship") is not None:
         if legalserver_data["citizenship"].get("lookup_value_name") is not None:
             client.citizenship = legalserver_data["citizenship"].get(
@@ -3488,6 +3601,85 @@ def populate_client(
             client.address.county = legalserver_data["client_address_home"][
                 "county"
             ].get("lookup_value_name")
+
+        # GIS Fields
+        if legalserver_data["client_address_home"].get("lon") is not None:
+            client.address.ls_longitude = legalserver_data["client_address_home"].get(
+                "lon"
+            )
+        if legalserver_data["client_address_home"].get("lat") is not None:
+            client.address.ls_latitude = legalserver_data["client_address_home"].get(
+                "lat"
+            )
+        if legalserver_data["client_address_home"].get("census_tract") is not None:
+            if (
+                legalserver_data["client_address_home"]["census_tract"].get(
+                    "lookup_value_name"
+                )
+                is not None
+            ):
+                client.address.census_tract = legalserver_data[
+                    "client_address_home"
+                ].get("")
+        if legalserver_data["client_address_home"].get("geocoding_failed") is not None:
+            client.address.ls_geocoding_failed = legalserver_data[
+                "client_address_home"
+            ].get("geocoding_failed")
+        if (
+            legalserver_data["client_address_home"].get(
+                "state_legislature_district_upper"
+            )
+            is not None
+        ):
+            if (
+                legalserver_data["client_address_home"][
+                    "state_legislature_district_upper"
+                ].get("lookup_value_name")
+                is not None
+            ):
+                client.address.state_legislature_district_upper = legalserver_data[
+                    "client_address_home"
+                ]["state_legislature_district_upper"].get("lookup_value_name")
+        if (
+            legalserver_data["client_address_home"].get(
+                "state_legislature_district_lower"
+            )
+            is not None
+        ):
+            if (
+                legalserver_data["client_address_home"][
+                    "state_legislature_district_lower"
+                ].get("lookup_value_name")
+                is not None
+            ):
+                client.address.state_legislature_district_lower = legalserver_data[
+                    "client_address_home"
+                ]["state_legislature_district_lower"].get("lookup_value_name")
+        if (
+            legalserver_data["client_address_home"].get("congressional_district")
+            is not None
+        ):
+            if (
+                legalserver_data["client_address_home"]["congressional_district"].get(
+                    "lookup_value_name"
+                )
+                is not None
+            ):
+                client.address.congressional_district = legalserver_data[
+                    "client_address_home"
+                ]["congressional_district"].get("lookup_value_name")
+
+        standard_client_home_address_key_list = standard_client_home_address_keys()
+        for key, value in legalserver_data["client_address_home"].items():
+            if key not in standard_client_home_address_key_list:
+                if isinstance(value, dict):
+                    if value.get("lookup_value_name") is not None:
+                        setattr(client.address, key, value.get("lookup_value_name"))
+
+                #                        client.address[key] = value.get("lookup_value_name")
+                else:
+                    #                    client.address[key] = value
+                    setattr(client.address, key, value)
 
     # Client Mailing Address
     if legalserver_data.get("client_address_mailing") is not None:

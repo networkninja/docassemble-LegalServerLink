@@ -381,6 +381,10 @@ populates it with the event details related to a case. If the general
 legalserver_data from the `get_matter_details` response is not included, it will
 make an API call using the `search_event_data` function.
 
+Note that because this package is designed to connect LegalServer cases to
+Docassemble, it does not address the Outreaches key present in the LegalServer
+event response.
+
 ### Parameters
 
 * `event_list` - DAList of DAObjects
@@ -632,16 +636,18 @@ returned in the LegalServer API calls. This makes it easier to identify when
 there are custom fields present in the API response. These exist for the
 following LegalServer response objects:
 
+* Additional Names
 * Adverse Parties
 * Assignments
 * Charges
+* Client Addresses
 * Contacts
 * Events
 * Incomes
 * Litigations
 * Matters
+* Non-Adverse Parties
 * Organizations
 * Services
-* Users
 * Tasks
-* Non-Adverse Parties
+* Users

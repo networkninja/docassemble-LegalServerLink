@@ -41,6 +41,20 @@ Format:
 ### Security
 - 
 -->
+## [1.0.4]
+
+### Added
+
+* Added support for GIS fields.
+
+### Fixed
+
+* Additional Names now populate properly.
+* Fixed the keys for the Non-Adverse Party fields and adjusted the populate function.
+* Fixed the keys for the Services fields.
+* Fixed the keys for the Adverse Party fields and adjusted the populate function.
+* Fixed the keys for the Events fields and adjusted the populate function.
+
 ## [1.0.3]
 
 * Added missing keys to the matter list to prevent them from displaying as
