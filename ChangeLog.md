@@ -41,6 +41,12 @@ Format:
 ### Security
 - 
 -->
+## [1.0.5]
+
+### Fixed
+
+* Added some type ignores to account for PyCountry's classes.
+
 ## [1.0.4]
 
 ### Added

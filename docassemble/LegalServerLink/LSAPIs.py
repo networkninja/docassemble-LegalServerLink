@@ -114,7 +114,7 @@ def country_code_from_name(country_name_string: str) -> str:
             try:
                 country_list = pycountry.countries.search_fuzzy(country_name_string)
                 if len(country_list) == 1:
-                    country_code = country_list[0].alpha_2
+                    country_code = country_list[0].alpha_2  # type: ignore[attr-defined]
                 elif len(country_list) > 1:
                     log(
                         f"Multiple responses when converting country to country"
@@ -157,7 +157,7 @@ def language_code_from_name(language_name: str) -> str:
     language_code = "Unknown"
     if language_name is not None:
         try:
-            language_dict = pycountry.languages.lookup(language_name).alpha_2
+            language_dict = pycountry.languages.lookup(language_name).alpha_2  # type: ignore
             language_code = language_dict
         except:
             log(
