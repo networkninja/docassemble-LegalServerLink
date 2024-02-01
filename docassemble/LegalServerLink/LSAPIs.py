@@ -1557,6 +1557,8 @@ def populate_events(
                         new_event.office_name = item["office"].get("office_name")
                     if item["office"].get("office_code") is not None:
                         new_event.office_code = item["office"].get("office_code")
+                if item.get("external_id") is not None:
+                    new_event.external_id = item.get("external_id")
 
                 standard_key_list = standard_event_keys()
                 custom_fields = {
@@ -2362,6 +2364,9 @@ def populate_litigations(
                     new_litigation.number_of_people_served = item.get(
                         "number_of_people_served"
                     )
+                if item.get("external_id") is not None:
+                    new_litigation.external_id = item.get("external_id")
+
                 standard_key_list = standard_litigation_keys()
                 custom_fields = {
                     key: value
@@ -2415,6 +2420,7 @@ def standard_litigation_keys() -> List[str]:
         "filing_type",
         "number_of_people_served",
         "litigation_uuid",
+        "external_id",
     ]
     return standard_litigation_keys
 
@@ -2450,6 +2456,7 @@ def standard_charges_keys() -> List[str]:
         "issue_note",
         "dynamic_process",
         "charge_uuid",
+        "external_id",
     ]
     return standard_charges_keys
 
@@ -2482,6 +2489,7 @@ def standard_services_keys() -> List[str]:
         "service_uuid",
         "charges",
         "matter_id",
+        "external_id",
     ]
     return standard_services_keys
 
@@ -2724,6 +2732,7 @@ def standard_event_keys() -> List[str]:
         "dynamic_process_id",
         "outreaches",
         "private_event",
+        "external_id",
     ]
     return standard_event_keys
 
@@ -3061,6 +3070,7 @@ def standard_matter_keys() -> List[str]:
         "contacts",
         "non_adverse_parties",
         "tasks",
+        "external_id",
     ]
     return standard_matter_keys
 
@@ -3168,6 +3178,8 @@ def populate_charges(
                         new_charge.dynamic_process_name = item["dynamic_process"].get(
                             "dynamic_process_name"
                         )
+                if item.get("external_id") is not None:
+                    new_charge.external_id = item.get("external_id")
 
                 standard_key_list = standard_charges_keys()
                 custom_fields = {
@@ -3266,6 +3278,9 @@ def populate_services(
                     new_service.decision = item["decision"].get("lookup_value_name")
                 if item.get("funding_code") is not None:
                     new_service.funding_code = item.get("funding_code")
+                if item.get("external_id") is not None:
+                    new_service.external_id = item.get("external_id")
+
                 standard_key_list = standard_services_keys()
                 custom_fields = {
                     key: value
@@ -4196,6 +4211,8 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
             case.military_status = legalserver_data["military_status"].get(
                 "lookup_value_name"
             )
+    if legalserver_data.get("external_id") is not None:
+        case.external_id = legalserver_data.get("external_id")
 
     # Custom Fields are funny
     standard_key_list = standard_matter_keys()

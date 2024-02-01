@@ -28,8 +28,11 @@ unauthorized data access.
 
 ## Requirements
 
-* Docassemble 1.4.52 or greater (if installed on an older version of Docassemble,
-it will try to upgrade it to this version)
+* Docassemble 1.4.54 or greater (if installed on an older version of Docassemble,
+it will try to upgrade it to this version.) This package requires Python 3.10
+which is only available on Docassemble 1.4.54 or later. If you are on Docassemble
+1.4.53 or earlier, you will need to do an upgrade of your container for Docassemble,
+upgrading in the Package Management settings page will not be sufficient.
 * LegalServer's [API v2](https://apidocs.legalserver.org/docs/ls-apis/ky42lgd4au6t0-legal-server-core-api-v2)
 * LegalServer's Docassemble Integration module ([contact LegalServer support](mailto:support@legalserver.org)
 for a change order to enable)
@@ -52,14 +55,16 @@ legalserver:
     expiration: 2024-12-15
     report 456: 00cefa38-819b-4387-a207-38a7e33e61e0  
   interviews: 
-    - interview: docassemble.LegalServerLinkProofOfConcept:data/questions/LSLink.yml
-      name: POC
+    - interview: docassemble.LegalServerLink:data/questions/sample_letter.yml
+      name: Sample Client Letter
       external: False
 ```
 
 The keys for `mysite-demo` and `mysite` will allow your Docassemble server to
-work with both your Live site and you Demo site. These need to be lower case to
-ensure that the text matching to find the correct API keys will work as expected.
+work with both your Live site and you Demo site. The LegalServer site
+abbreviations need to be lower case to ensure that the text matching to find the
+correct API keys will work as expected. The bearer tokens can be created in
+LegalServer using the [Manage Personal Access Tokens Block](https://help.legalserver.org/article/2469-manage-personal-access-tokens-block).
 The `expiration` keys are required to allow Docassemble to ensure that the
 bearer tokens are still valid.
 
@@ -76,7 +81,7 @@ by the LegalServer UI for that specific report.
 The list under `interviews` allows you to have a unique list of Interviews
 linked to LegalServer that is separate and distinct from the Dispatch list you
 may be using elsewhere with Docassemble. If an interview is marked as `external`
-LegalServer will provide a read-only link instead of a clicable hyperlink. This
+LegalServer will provide a read-only link instead of a clickable hyperlink. This
 way the link can be copied for a client to complete on their own later.
 
 ### LS Interviews Docassemble Endpoint
@@ -102,14 +107,15 @@ available interviews.
 ### LegalServer API Configuration
 
 This package assumes that you are using LegalServer's v2 API. This is not
-broadly available, so please file a request with
+available by default, so please file a request with
 [support@legalserver.org](mailto:support@legalserver.org) to enable it. This is
 to provide more information to the Docassemble developer as well as use clearer
 data structures.
 
 The bearer tokens used in the this integration should be linked to a dedicated
-API account with a dedicated API User Role. For more details, see [API
-Authentication](https://apidocs.legalserver.org/docs/ls-apis/b6b6c2d4906e9-api-authentication).
+API account with a dedicated API User Role. To create the bearer tokens, use the
+LegalServer [Manage Personal Access Tokens Block](https://help.legalserver.org/article/2469-manage-personal-access-tokens-block).
+For more details, see [API Authentication](https://apidocs.legalserver.org/docs/ls-apis/b6b6c2d4906e9-api-authentication).
 The User Role needs to have the following permissions:
 
 * API Access
@@ -163,6 +169,9 @@ Optional additional permissions:
 Please remember that the token expires 1 year after it is created. The package
 will warn you when the token has expired.
 
+Note that all of the endpoints are included in the base level of API Access.
+Premium APIs are not required.
+
 ## Using this Package
 
 To use this package, you'll want to include the LSLink.yml file in any of your
@@ -170,7 +179,7 @@ interviews:
 
 ```(YAML)
 includes:
-  - docassemble-LegalServerLink:data/questions/LSLink.yml
+  - docassemble-LSDocassembleLink:data/questions/LSLink.yml
 ```
 
 ### Interview Security
