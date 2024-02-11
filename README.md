@@ -178,8 +178,8 @@ To use this package, you'll want to include the LSLink.yml file in any of your
 interviews:
 
 ```(YAML)
-includes:
-  - docassemble-LSDocassembleLink:data/questions/LSLink.yml
+include:
+  - docassemble.LegalServerLink:data/questions/LSLink.yml
 ```
 
 ### Interview Security
