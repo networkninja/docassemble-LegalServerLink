@@ -9,6 +9,7 @@ metadata:
   authors:
     - organization: LegalServer
   revision_date: 2023-10-11
+  require login: True
 ---
 features:
   use catchall: True
@@ -25,18 +26,6 @@ include:
 ---
 objects:
   - client_message: DAObject
----
-initial: True
-code: |
-  if not user_logged_in():
-    kick_out_user
----
-event: kick_out_user
-question: |
-  I am sorry, but you need to log in if you want to use this interview.
-buttons:
-  - Log in: signin
-  - Exit: exit
 ---
 mandatory: True
 code: |
