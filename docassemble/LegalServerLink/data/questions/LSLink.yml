@@ -12,7 +12,7 @@ comment:
   authors:
     - name: LegalServer
       organization: Network Ninja, Inc.
-  revision_date: 2023-09-12
+  revision_date: 2024-03-20
 ---
 if: client_is_organization
 objects:
@@ -23,6 +23,7 @@ objects:
   - legalserver_case: DAObject
   - legalserver_assignments: DAList.using(object=DAObject, there_are_any=True, auto_gather=False, complete_attribute='complete')
   - legalserver_services: DAList.using(object=DAObject, there_are_any=True, auto_gather=False, complete_attribute='complete')
+  - legalserver_documents: DAList.using(object=DAObject, there_are_any=True, auto_gather=False, complete_attribute='complete')
   - legalserver_litigations: DAList.using(object=DAObject, there_are_any=True, auto_gather=False, complete_attribute='complete')
   - legalserver_charges: DAList.using(object=DAObject, there_are_any=True, auto_gather=False, complete_attribute='complete')
   - legalserver_contacts: DAList.using(object=Individual, there_are_any=True, auto_gather=False, complete_attribute='complete')
@@ -39,8 +40,7 @@ objects:
   - legalserver_pro_bono_assignments: DAList.using(object=Individual, there_are_any=False, auto_gather=False, complete_attribute='complete')
   - legalserver_current_user: Individual
 ---
-question: |
-  LegalServer Site and Case
+question: LegalServer Site and Case
 fields:
   - What is the LegalServer Case UUID?: legalserver_matter_uuid
   - What is the LegalServer site abbreviation: legalserver_site_abbreviation
@@ -55,10 +55,11 @@ code: |
     legalserver_site_type_list.append('Test')
     legalserver_site_type_list.append('Dev')
 ---
-question: |
-  LegalServer Current User
+question: LegalServer Current User
 fields:
   - What is the LegalServer Current User UUID?: legalserver_current_user_uuid
+comment: |
+  default: c285b062-4c39-4a50-9c49-e516a91e7556
 ---
 question: |
   Data
@@ -154,6 +155,11 @@ code: |
 ---
 code: |
   raise_errors_getting_legalserver_data
+  populate_documents(document_list=legalserver_documents, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
+  parse_legalserver_document_data = True
+---
+code: |
+  raise_errors_getting_legalserver_data
   populate_adverse_parties(adverse_party_list=legalserver_adverse_parties, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
   parse_legalserver_adverse_party_data = True
 ---
@@ -236,6 +242,7 @@ code: |
   parse_client_data
   parse_legalserver_assignment_data
   parse_legalserver_income_data
+  parse_legalserver_document_data
   parse_legalserver_litigation_data
   parse_legalserver_note_data
   parse_legalserver_charge_data

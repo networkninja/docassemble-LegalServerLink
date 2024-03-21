@@ -41,6 +41,19 @@ Format:
 ### Security
 - 
 -->
+## [1.1.0]
+
+### Added
+
+* `sites` parameter in the `interviews` list consumed by LegalServer.
+* `sort` and `page_limit` parameters in the search functions.
+* Added functions and objects to collect documents on a case.
+
+### Changed
+
+* Updated reference in documentation.
+* Changed the require login method in the sample interview based on a PR.
+
 ## [1.0.6]
 
 ### Added

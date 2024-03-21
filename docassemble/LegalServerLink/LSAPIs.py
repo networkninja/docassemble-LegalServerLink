@@ -22,7 +22,7 @@ from docassemble.base.util import (
     path_and_mimetype,
 )
 import zipfile
-from typing import List, Dict, Union, Optional
+from typing import List, Dict, Union, Optional, Any
 import os.path
 from os import listdir
 
@@ -44,6 +44,7 @@ __all__ = [
     "search_matter_additional_names",
     "search_matter_adverse_parties",
     "search_matter_non_adverse_parties",
+    "search_document_data",
     "get_organization_details",
     "search_organization_data",
     "get_contact_details",
@@ -62,7 +63,9 @@ __all__ = [
     "populate_additional_names",
     "populate_adverse_parties",
     "populate_non_adverse_parties",
+    "populate_documents",
     "standard_litigation_keys",
+    "standard_document_keys",
     "standard_services_keys",
     "standard_charges_keys",
     "standard_organization_keys",
@@ -294,6 +297,7 @@ def get_matter_details(
     custom_fields_services: list | None = None,
     custom_fields_litigations: list | None = None,
     custom_fields_charges: list | None = None,
+    sort: str | None = None,
 ) -> Dict:
     """This function gets the Details of a LegalServer matter using the Get
     Matters endpoint.
@@ -309,6 +313,7 @@ def get_matter_details(
         custom_fields_charges (list[str]): optional python list of string values
         custom_fields_litigations (list[str]): optional python list of string values
         custom_fields_services (list[str]): optional python list of string values
+        sort (str): optional string to sort the results by. Defaults to ASC.
 
     Returns:
         A dictionary of the LegalServer Matter details.
@@ -322,7 +327,7 @@ def get_matter_details(
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/matters/{legalserver_matter_uuid}"
 
-    queryparam_data = {}
+    queryparam_data: Dict[str, Union[str, List[str]]] = {}
     if custom_fields:
         queryparam_data["custom_fields"] = custom_fields
     if custom_fields_litigations:
@@ -331,6 +336,10 @@ def get_matter_details(
         queryparam_data["custom_fields_charges"] = custom_fields_charges
     if custom_fields_services:
         queryparam_data["custom_fields_services"] = custom_fields_services
+    if sort == "asc":
+        queryparam_data["sort"] = "asc"
+    elif sort == "desc":
+        queryparam_data["sort"] = "desc"
 
     return_data = get_legalserver_response(
         url=url,
@@ -348,6 +357,7 @@ def get_organization_details(
     legalserver_site: str,
     legalserver_organization_uuid: str,
     custom_fields: list | None = None,
+    sort: str | None = None,
 ) -> Dict:
     """This returns information about a specific Organization in LegalServer.
 
@@ -360,6 +370,7 @@ def get_organization_details(
         legalserver_organization_uuid (dict): The UUID of the specific LegalServer
             organization to retrieve
         custom_fields (list): A optional list of custom fields to include.
+        sort (str): Optional string to sort the results by. Defaults to ASC.
 
     Returns:
         A dictionary for the specific organization.
@@ -374,10 +385,14 @@ def get_organization_details(
     header_content["Content-Type"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/organizations/{legalserver_organization_uuid}"
-    queryparam_data = {}
+    queryparam_data: Dict[str, Union[str, List[str]]] = {}
 
     if custom_fields:
         queryparam_data["custom_fields"] = custom_fields
+    if sort == "asc":
+        queryparam_data["sort"] = "asc"
+    elif sort == "desc":
+        queryparam_data["sort"] = "desc"
 
     return_data = get_legalserver_response(
         url=url,
@@ -396,6 +411,8 @@ def search_organization_data(
     legalserver_site: str,
     organization_search_params: dict | None = None,
     custom_fields: list | None = None,
+    sort: str | None = None,
+    page_limit: int | None = None,
 ) -> List[Dict]:
     """
     Search Organizations within LegalServer for a given set of parameters and custom fields.
@@ -406,6 +423,8 @@ def search_organization_data(
         legalserver_site (str):
         organization_search_params (dict):
         custom_fields (list):
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+        page_limit (int): Optional integer to limit the number of results returned.
 
     Returns:
         List of dictionaries
@@ -421,6 +440,10 @@ def search_organization_data(
     url = f"https://{legalserver_site}.legalserver.org/api/v2/organizations"
     if custom_fields:
         organization_search_params["custom_fields"] = custom_fields
+    if sort == "asc":
+        organization_search_params["sort"] = "asc"
+    elif sort == "desc":
+        organization_search_params["sort"] = "desc"
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -428,6 +451,7 @@ def search_organization_data(
         params=organization_search_params,
         legalserver_site=legalserver_site,
         header_content=header_content,
+        page_limit=page_limit,
     )
 
     return return_data
@@ -497,6 +521,8 @@ def search_matter_notes_data(
     legalserver_matter_uuid: str,
     note_type: str = "",
     search_note_params: dict | None = None,
+    sort: str | None = None,
+    page_limit: int | None = None,
 ) -> List[Dict]:
     """Search Notes on a given Matter within LegalServer.
 
@@ -510,6 +536,8 @@ def search_matter_notes_data(
         legalserver_matter_uuid (str): required
         note_type (str): Optional string to filter on Note Type
         search_note_params (dict): Optional dictionary of search parameters
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+        page_limit (int): Optional integer to limit the number of results returned.
 
     Returns:
         A list of dictionaries with the notes data."""
@@ -522,6 +550,10 @@ def search_matter_notes_data(
         search_note_params = {}
     if note_type:
         search_note_params["note_type"] = note_type
+    if sort == "asc":
+        search_note_params["sort"] = "asc"
+    elif sort == "desc":
+        search_note_params["sort"] = "desc"
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -529,6 +561,7 @@ def search_matter_notes_data(
         params=search_note_params,
         legalserver_site=legalserver_site,
         header_content=header_content,
+        page_limit=page_limit,
     )
 
     return return_data
@@ -540,6 +573,8 @@ def search_matter_litigation_data(
     legalserver_matter_uuid: str,
     litigation_search_params: dict | None = None,
     custom_fields: list | None = None,
+    sort: str | None = None,
+    page_limit: int | None = None,
 ) -> List[Dict]:
     """Search Litigation records within a given matter in LegalServer.
 
@@ -555,6 +590,8 @@ def search_matter_litigation_data(
         custom_fields (list): Optional list of custom fields to include in the
             response.
         litigation_search_params (dict): Optional dictionary of search parameters
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+        page_limit (int): Optional integer to limit the number of results returned.
 
     Returns:
         A list of dictionaries with the litigation data."""
@@ -567,6 +604,10 @@ def search_matter_litigation_data(
         litigation_search_params = {}
     if custom_fields:
         litigation_search_params["custom_fields"] = custom_fields
+    if sort == "asc":
+        litigation_search_params["sort"] = "asc"
+    elif sort == "desc":
+        litigation_search_params["sort"] = "desc"
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -574,6 +615,7 @@ def search_matter_litigation_data(
         params=litigation_search_params,
         legalserver_site=legalserver_site,
         header_content=header_content,
+        page_limit=page_limit,
     )
 
     return return_data
@@ -585,6 +627,8 @@ def search_matter_services_data(
     legalserver_matter_uuid: str,
     services_search_params: dict | None = None,
     custom_fields: list | None = None,
+    sort: str | None = None,
+    page_limit: int | None = None,
 ) -> List[Union[str, Dict]]:
     """Search Service records for a given Matter in LegalServer.
 
@@ -598,6 +642,8 @@ def search_matter_services_data(
         legalserver_matter_uuid (str): required
         custom_fields (list): Optional list to include any custom fields
         services_search_params (dict): Optional dictionary of search parameters
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+        page_limit (int): Optional integer to limit the number of results returned.
 
     Returns:
         A list of dictionaries with the services data."""
@@ -609,6 +655,10 @@ def search_matter_services_data(
         services_search_params = {}
     if custom_fields:
         services_search_params["custom_fields"] = custom_fields
+    if sort == "asc":
+        services_search_params["sort"] = "asc"
+    elif sort == "desc":
+        services_search_params["sort"] = "desc"
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -616,6 +666,7 @@ def search_matter_services_data(
         params=services_search_params,
         legalserver_site=legalserver_site,
         header_content=header_content,
+        page_limit=page_limit,
     )
 
     return return_data  # type: ignore
@@ -627,6 +678,8 @@ def search_matter_charges_data(
     legalserver_matter_uuid: str,
     charges_search_params: dict | None = None,
     custom_fields: list | None = None,
+    sort: str | None = None,
+    page_limit: int | None = None,
 ) -> List[Dict]:
     """Search Charges on a given Matter in LegalServer.
 
@@ -640,6 +693,8 @@ def search_matter_charges_data(
         legalserver_matter_uuid (str): required
         custom_fields (list): Optional list to include any custom fields
         charges_search_params (dict): Optional dictionary of search parameters
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+        page_limit (int): Optional integer to limit the number of results returned.
 
     Returns:
         A list of dictionaries with the charges data."""
@@ -651,6 +706,10 @@ def search_matter_charges_data(
         charges_search_params = {}
     if custom_fields:
         charges_search_params["custom_fields"] = custom_fields
+    if sort == "asc":
+        charges_search_params["sort"] = "asc"
+    elif sort == "desc":
+        charges_search_params["sort"] = "desc"
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -658,6 +717,7 @@ def search_matter_charges_data(
         params=charges_search_params,
         legalserver_site=legalserver_site,
         header_content=header_content,
+        page_limit=page_limit,
     )
 
     return return_data
@@ -668,6 +728,8 @@ def search_matter_contacts_data(
     legalserver_site: str,
     legalserver_matter_uuid: str,
     matter_contact_search_params: dict | None = None,
+    sort: str | None = None,
+    page_limit: int | None = None,
 ) -> List[Dict]:
     """Search Case Contacts on a given Matter in LegalServer.
 
@@ -681,6 +743,8 @@ def search_matter_contacts_data(
         legalserver_matter_uuid (str): required
         matter_contact_search_params (dict): Optional dictionary of search
             parameters
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+        page_limit (int): Optional integer to limit the number of results returned.
 
     Returns:
         A list of dictionaries with the contacts data."""
@@ -690,6 +754,10 @@ def search_matter_contacts_data(
     url = f"https://{legalserver_site}.legalserver.org/api/v2/matters/{legalserver_matter_uuid}/contacts"
     if not matter_contact_search_params:
         matter_contact_search_params = {}
+    if sort == "asc":
+        matter_contact_search_params["sort"] = "asc"
+    elif sort == "desc":
+        matter_contact_search_params["sort"] = "desc"
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -697,6 +765,7 @@ def search_matter_contacts_data(
         params=matter_contact_search_params,
         legalserver_site=legalserver_site,
         header_content=header_content,
+        page_limit=page_limit,
     )
 
     return return_data  # type: ignore
@@ -707,6 +776,8 @@ def search_matter_assignments_data(
     legalserver_site: str,
     legalserver_matter_uuid: str,
     matter_assignment_search_params: dict | None = None,
+    sort: str | None = None,
+    page_limit: int | None = None,
 ) -> List[Dict]:
     """Search Assignments on a given Matter in LegalServer.
 
@@ -720,6 +791,8 @@ def search_matter_assignments_data(
         legalserver_matter_uuid (str): required
         matter_assignment_search_params (dict): Optional dictionary of search
             parameters
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+        page_limit (int): Optional integer to limit the number of results returned.
 
     Returns:
         A list of dictionaries with the assignment data."""
@@ -730,6 +803,10 @@ def search_matter_assignments_data(
 
     if not matter_assignment_search_params:
         matter_assignment_search_params = {}
+    if sort == "asc":
+        matter_assignment_search_params["sort"] = "asc"
+    elif sort == "desc":
+        matter_assignment_search_params["sort"] = "desc"
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -737,6 +814,7 @@ def search_matter_assignments_data(
         params=matter_assignment_search_params,
         legalserver_site=legalserver_site,
         header_content=header_content,
+        page_limit=page_limit,
     )
 
     return return_data
@@ -747,6 +825,8 @@ def search_matter_additional_names(
     legalserver_site: str,
     legalserver_matter_uuid: str,
     matter_additional_names_search_params: dict | None = None,
+    sort: str | None = None,
+    page_limit: int | None = None,
 ) -> List[Dict]:
     """Search Additional Names on a given Matter in LegalServer.
 
@@ -760,6 +840,8 @@ def search_matter_additional_names(
         legalserver_matter_uuid (str): required
         matter_additional_names_search_params (dict): Optional dictionary of
             search parameters
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+        page_limit (int): Optional integer to limit the number of results returned.
 
     Returns:
         A list of dictionaries with the additional names data."""
@@ -770,6 +852,10 @@ def search_matter_additional_names(
 
     if not matter_additional_names_search_params:
         matter_additional_names_search_params = {}
+    if sort == "asc":
+        matter_additional_names_search_params["sort"] = "asc"
+    elif sort == "desc":
+        matter_additional_names_search_params["sort"] = "desc"
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -777,6 +863,7 @@ def search_matter_additional_names(
         params=matter_additional_names_search_params,
         legalserver_site=legalserver_site,
         header_content=header_content,
+        page_limit=page_limit,
     )
 
     return return_data
@@ -787,6 +874,8 @@ def search_matter_non_adverse_parties(
     legalserver_site: str,
     legalserver_matter_uuid: str,
     matter_non_adverse_parties_search_params: dict | None = None,
+    sort: str | None = None,
+    page_limit: int | None = None,
 ) -> List[Dict]:
     """Search Non-Adverse Parties on a given Matter in LegalServer.
 
@@ -799,6 +888,8 @@ def search_matter_non_adverse_parties(
         legalserver_site (str): required
         legalserver_matter_uuid (str): required
         matter_non_adverse_parties_search_params (dict): Optional dictionary of search parameters
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+        page_limit (int): Optional integer to limit the number of results returned.
 
     Returns:
         A list of dictionaries with the Adverse Parties data."""
@@ -809,6 +900,10 @@ def search_matter_non_adverse_parties(
 
     if not matter_non_adverse_parties_search_params:
         matter_non_adverse_parties_search_params = {}
+    if sort == "asc":
+        matter_non_adverse_parties_search_params["sort"] = "asc"
+    elif sort == "desc":
+        matter_non_adverse_parties_search_params["sort"] = "desc"
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -816,6 +911,7 @@ def search_matter_non_adverse_parties(
         params=matter_non_adverse_parties_search_params,
         legalserver_site=legalserver_site,
         header_content=header_content,
+        page_limit=page_limit,
     )
 
     return return_data
@@ -826,6 +922,8 @@ def search_matter_adverse_parties(
     legalserver_site: str,
     legalserver_matter_uuid: str,
     matter_adverse_parties_search_params: dict | None = None,
+    sort: str | None = None,
+    page_limit: int | None = None,
 ) -> List[Dict]:
     """Search Adverse Parties on a given Matter in LegalServer.
 
@@ -838,6 +936,8 @@ def search_matter_adverse_parties(
         legalserver_site (str): required
         legalserver_matter_uuid (str): required
         matter_adverse_parties_search_params (dict): Optional dictionary of search parameters
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+        page_limit (int): Optional integer to limit the number of results returned.
 
     Returns:
         A list of dictionaries with the Adverse Parties data."""
@@ -848,6 +948,10 @@ def search_matter_adverse_parties(
 
     if not matter_adverse_parties_search_params:
         matter_adverse_parties_search_params = {}
+    if sort == "asc":
+        matter_adverse_parties_search_params["sort"] = "asc"
+    elif sort == "desc":
+        matter_adverse_parties_search_params["sort"] = "desc"
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -855,6 +959,7 @@ def search_matter_adverse_parties(
         params=matter_adverse_parties_search_params,
         legalserver_site=legalserver_site,
         header_content=header_content,
+        page_limit=page_limit,
     )
 
     return return_data
@@ -946,6 +1051,8 @@ def search_user_data(
     legalserver_site: str,
     user_search_params: dict | None = None,
     custom_fields: list | None = None,
+    sort: str | None = None,
+    page_limit: int | None = None,
 ) -> List[Dict]:
     """Search LegalServer Users with a set of search parameters.
 
@@ -958,6 +1065,8 @@ def search_user_data(
         user_search_params (dict): The search parameters to use to find the
             users.
         custom_fields (list): A optional list of custom fields to include.
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+        page_limit (int): Optional integer to limit the number of results returned.
 
     Returns:
         A list of dictionaries for the identified users.
@@ -974,6 +1083,10 @@ def search_user_data(
         user_search_params = {}
     if custom_fields:
         user_search_params["custom_fields"] = custom_fields
+    if sort == "asc":
+        user_search_params["sort"] = "asc"
+    elif sort == "desc":
+        user_search_params["sort"] = "desc"
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -981,6 +1094,7 @@ def search_user_data(
         params=user_search_params,
         legalserver_site=legalserver_site,
         header_content=header_content,
+        page_limit=page_limit,
     )
 
     return return_data
@@ -1100,6 +1214,8 @@ def search_contact_data(
     legalserver_site: str,
     contact_search_params: dict | None = None,
     custom_fields=[],
+    sort: str | None = None,
+    page_limit: int | None = None,
 ) -> List[Dict]:
     """Search Contacts in LegalServer for a set of search parameters.
 
@@ -1112,6 +1228,8 @@ def search_contact_data(
         contact_search_params (dict): The specific parameters to search for when
             looking at contacts.
         custom_fields (list): A optional list of custom fields to include.
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+        page_limit (int): Optional integer to limit the number of results returned.
 
     Returns:
         A list of dictionaries for the matching contacts.
@@ -1128,6 +1246,10 @@ def search_contact_data(
         contact_search_params = {}
     if custom_fields:
         contact_search_params["custom_fields"] = custom_fields
+    if sort == "asc":
+        contact_search_params["sort"] = "asc"
+    elif sort == "desc":
+        contact_search_params["sort"] = "desc"
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -1135,6 +1257,7 @@ def search_contact_data(
         params=contact_search_params,
         legalserver_site=legalserver_site,
         header_content=header_content,
+        page_limit=page_limit,
     )
 
     return return_data
@@ -1146,13 +1269,18 @@ def loop_through_legalserver_responses(
     header_content: Dict,
     source_type: str,
     legalserver_site: str,
+    page_limit: int | None = None,
 ) -> List:
     """Helper function to properly loop through LegalServer Search Responses."""
     return_data = []
     total_number_of_pages = 1
     counter = 0
 
-    while counter < total_number_of_pages and total_number_of_pages > 0:
+    while (
+        counter < total_number_of_pages
+        and total_number_of_pages > 0
+        and (page_limit is None or counter < page_limit)
+    ):
         try:
             log(
                 f"Search {source_type} records with params: {str(params)} on: " f"{url}"
@@ -1186,19 +1314,19 @@ def loop_through_legalserver_responses(
                 f"Error getting LegalServer {source_type} data for {str(params)} "
                 f"on {url}. Exception raised: {str(e)}."
             )
-            return [{"error": e}]
+            return [{"error": str(e)}]
         except requests.exceptions.HTTPError as e:
             log(
                 f"Error getting LegalServer {source_type} data for {str(params)} "
                 f"on {url}. Exception raised: {str(e)}."
             )
-            return [{"error": e}]
+            return [{"error": str(e)}]
         except requests.exceptions.Timeout as e:
             log(
                 f"Error getting LegalServer {source_type} data for {str(params)} "
                 f"on {url}. Exception raised: {str(e)}."
             )
-            return [{"error": e}]
+            return [{"error": str(e)}]
         except Exception as e:
             log(
                 f"Error searching LegalServer {source_type} data for {str(params)} "
@@ -1208,12 +1336,68 @@ def loop_through_legalserver_responses(
     return return_data
 
 
+def search_document_data(
+    *,
+    legalserver_site: str,
+    legalserver_matter_uuid: str | None = None,
+    document_search_params: dict | None = None,
+    sort: str | None = None,
+    page_limit: int | None = None,
+) -> List[Dict]:
+    """Search document data in LegalServer for a specific matter.
+
+    This uses LegalServer's Search Documents API to get back details of any
+    documents that match a given set of parameters. Typically, this will be
+    limited to a single case using the matter's UUID, but it does not have to
+    be limited.
+
+    Args:
+        legalserver_site (str): The specific LegalServer site to
+            check for the organization on.
+        legalserver_matter_uuid (dict): The UUID of the specific LegalServer
+            organization to retrieve
+        document_search_params (dict): A dictionary of search parameters to filter
+            for in the request.
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+        page_limit (int): Optional integer to limit the number of results returned.
+
+    Returns:
+        A list of dictionaries of matching documents.
+    """
+
+    header_content = get_legalserver_token(legalserver_site=legalserver_site)
+    header_content["Content-Type"] = "application/json"
+
+    url = f"https://{legalserver_site}.legalserver.org/api/v2/documents"
+    if not document_search_params:
+        document_search_params = {}
+    if legalserver_matter_uuid:
+        document_search_params["matters"] = legalserver_matter_uuid
+    if sort == "asc":
+        document_search_params["sort"] = "asc"
+    elif sort == "desc":
+        document_search_params["sort"] = "desc"
+
+    return_data = loop_through_legalserver_responses(
+        url=url,
+        source_type="documents",
+        params=document_search_params,
+        legalserver_site=legalserver_site,
+        header_content=header_content,
+        page_limit=page_limit,
+    )
+
+    return return_data
+
+
 def search_task_data(
     *,
     legalserver_site: str,
     legalserver_matter_uuid: str | None = None,
     task_search_params: dict | None = None,
     custom_fields=[],
+    sort: str | None = None,
+    page_limit: int | None = None,
 ) -> List[Dict]:
     """Search task data in LegalServer for a specific matter.
 
@@ -1229,6 +1413,8 @@ def search_task_data(
         task_search_params (dict): A dictionary of search parameters to filter
             for in the request.
         custom_fields (list): A optional list of custom fields to include.
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+        page_limit (int): Optional integer to limit the number of results returned.
 
     Returns:
         A list of dictionaries of matching tasks.
@@ -1247,6 +1433,10 @@ def search_task_data(
         task_search_params["matters"] = legalserver_matter_uuid
     if custom_fields:
         task_search_params["custom_fields"] = custom_fields
+    if sort == "asc":
+        task_search_params["sort"] = "asc"
+    elif sort == "desc":
+        task_search_params["sort"] = "desc"
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -1254,6 +1444,7 @@ def search_task_data(
         params=task_search_params,
         legalserver_site=legalserver_site,
         header_content=header_content,
+        page_limit=page_limit,
     )
 
     return return_data
@@ -1400,6 +1591,8 @@ def search_event_data(
     legalserver_matter_uuid: str | None = None,
     event_search_params: dict | None = None,
     custom_fields=[],
+    sort: str | None = None,
+    page_limit: int | None = None,
 ) -> List[Dict]:
     """Search event data in LegalServer for a specific matter.
 
@@ -1415,6 +1608,8 @@ def search_event_data(
         event_search_params (dict): A dictionary of search parameters to filter
             for in the request.
         custom_fields (list): A optional list of custom fields to include.
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+        page_limit (int): Optional integer to limit the number of results returned.
 
     Returns:
         A list of dictionaries of matching events.
@@ -1433,6 +1628,10 @@ def search_event_data(
         event_search_params["matters"] = legalserver_matter_uuid
     if custom_fields:
         event_search_params["custom_fields"] = custom_fields
+    if sort == "asc":
+        event_search_params["sort"] = "asc"
+    elif sort == "desc":
+        event_search_params["sort"] = "desc"
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -1440,6 +1639,7 @@ def search_event_data(
         params=event_search_params,
         legalserver_site=legalserver_site,
         header_content=header_content,
+        page_limit=page_limit,
     )
 
     return return_data
@@ -3071,8 +3271,130 @@ def standard_matter_keys() -> List[str]:
         "non_adverse_parties",
         "tasks",
         "external_id",
+        "documents"
     ]
     return standard_matter_keys
+
+
+def standard_document_keys() -> List[str]:
+    """Return the list of keys present in a Document response from LegalServer to
+    better identify the custom fields.
+
+    Args:
+        None.
+
+    Returns:
+        A list of strings.
+    """
+    standard_document_keys = [
+        "id",
+        "uuid",
+        "name",
+        "title",
+        "mime_type",
+        "virus_free",
+        "date_create",
+        "download_url",
+        "virus_scanned",
+        "disk_file_size",
+        "storage_backend",
+        "type",
+        "programs",
+        "folder",
+        "funding_code",
+        "hyperlink",
+        "shared_with_sj_client",
+    ]
+    return standard_document_keys
+
+
+def populate_documents(
+    *,
+    document_list: DAList,
+    legalserver_data: dict | None = None,
+    legalserver_matter_uuid: str = "",
+    legalserver_site: str = "",
+) -> DAList:
+    """Take the data from LegalServer and populate a list of LegalServer
+    Document records into a DAList of DAObjects.
+
+    This is a keyword defined function that takes a DAList of DAObjects and
+    populates it with the document details related to a case. If the general
+    legalserver_data from the `get_matter_details` response is not included, it will
+    make an API call using the `search_matter_documents_data` function.
+
+    Args:
+        document_list (DAList[DAObject]): DAList of DAObjects.
+        legalserver_data (dict): Optional dictionary of the matter data from a
+            LegalServer request.
+        legalserver_matter_uuid (str): needed if the `legalserver_data` is not
+            provided.
+        legalserver_site (str): needed if the `legalserver_data` is
+            not provided.
+
+    Returns:
+        DAList of DAObjects
+    """
+
+    source = get_source_module_data(
+        source_type="documents",
+        legalserver_data=legalserver_data,
+        legalserver_matter_uuid=legalserver_matter_uuid,
+        legalserver_site=legalserver_site,
+    )
+
+    if source:
+        for item in source:
+            if isinstance(item, dict):
+                # item: DAObject = item  # type annotation
+                new_document = document_list.appendObject()
+                new_document.uuid = item.get("uuid")
+                new_document.id = item.get("id")
+                if item.get("name") is not None:
+                    new_document.name = item.get("name")
+                if item.get("title") is not None:
+                    new_document.title = item.get("title")
+                if item.get("mime_type") is not None:
+                    new_document.mime_type = item.get("mime_type")
+                if item.get("virus_free") is not None:
+                    new_document.virus_free = item.get("virus_free")
+                if item.get("date_create") is not None:
+                    new_document.date_create = item.get("date_create")
+                if item.get("download_url") is not None:
+                    new_document.download_url = item.get("download_url")
+                if item.get("virus_scanned") is not None:
+                    new_document.virus_scanned = item.get("virus_scanned")
+                if item.get("disk_file_size") is not None:
+                    new_document.disk_file_size = item.get("disk_file_size")
+                if item["storage_backend"].get("lookup_value_name") is not None:
+                    new_document.storage_backend = item["storage_backend"].get(
+                        "lookup_value_name"
+                    )
+                if item["type"].get("lookup_value_name") is not None:
+                    new_document.type = item["type"].get("lookup_value_name")
+                temp_list = []
+                for program in item["programs"]:
+                    if program.get("lookup_value_name") is not None:
+                        temp_list.append(program.get("lookup_value_name"))
+                if temp_list:
+                    new_document.programs = temp_list
+                if item.get("folder") is not None:
+                    new_document.folder = item.get("folder")
+                if item.get("funding_code") is not None:
+                    new_document.funding_code = item.get("funding_code")
+                if item.get("hyperlink") is not None:
+                    new_document.hyperlink = item.get("hyperlink")
+                if item.get("shared_with_sj_client") is not None:
+                    new_document.shared_with_sj_client = item.get(
+                        "shared_with_sj_client"
+                    )
+                new_document.complete = True
+
+    log(f"Documents Populated for a case.")
+
+    document_list.gathered = True
+
+    return document_list
 
 
 def populate_charges(
@@ -4334,6 +4656,11 @@ def get_source_module_data(
                 # legalserver_site=legalserver_site,
                 # legalserver_matter_uuid=legalserver_matter_uuid
                 # )
+            elif source_type == "documents":
+                source = search_document_data(
+                    legalserver_site=legalserver_site,
+                    legalserver_matter_uuid=legalserver_matter_uuid,
+                )
             else:
                 source = []
         else:
@@ -4896,7 +5223,7 @@ def get_legalserver_report_data(
     display_hidden_columns: bool = False,
     report_number: int,
     report_params: Dict | None = None,
-) -> Dict:
+) -> Dict[str, str | List[Dict[str, str | int | bool]]]:
     """This is a function that will get a LegalServer report and return the data
     in a python dictionary.
 
@@ -4981,21 +5308,21 @@ def get_legalserver_report_data(
 
     except etree.ParseError as e:
         log(f"LegalServer report with {str(report_params)} failed: {e}")
-        return {"error": e}
+        return {"error": str(e)}
     except requests.exceptions.ConnectionError as e:
         log(f"LegalServer retrieving report with {str(report_params)} failed: {e}")
-        return {"error": e}
+        return {"error": str(e)}
     except requests.exceptions.HTTPError as e:
         log(f"LegalServer retrieving report with {str(report_params)} failed: {e}")
-        return {"error": e}
+        return {"error": str(e)}
     except requests.exceptions.Timeout as e:
         log(f"LegalServer retrieving report with {str(report_params)} failed: {e}")
-        return {"error": e}
+        return {"error": str(e)}
     except Exception as e:
         log(f"LegalServer retrieving report with {str(report_params)} failed: {e}")
-        return {"error": e}
+        return {"error": str(e)}
 
-    return dict_response
+    return dict_response  # type: ignore
 
 
 def list_templates(package_name: str = "") -> List:

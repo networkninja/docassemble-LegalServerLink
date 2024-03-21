@@ -44,3 +44,19 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "defusedxml.*"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "flask-testing.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "flask_testing.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "setuptools.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "responses.*"
+ignore_missing_imports = true

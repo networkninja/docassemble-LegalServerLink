@@ -58,6 +58,9 @@ legalserver:
     - interview: docassemble.LegalServerLink:data/questions/sample_letter.yml
       name: Sample Client Letter
       external: False
+      sites:
+        - Demo4
+        - Integrations
 ```
 
 The keys for `mysite-demo` and `mysite` will allow your Docassemble server to
@@ -80,9 +83,25 @@ by the LegalServer UI for that specific report.
 
 The list under `interviews` allows you to have a unique list of Interviews
 linked to LegalServer that is separate and distinct from the Dispatch list you
-may be using elsewhere with Docassemble. If an interview is marked as `external`
-LegalServer will provide a read-only link instead of a clickable hyperlink. This
-way the link can be copied for a client to complete on their own later.
+may be using elsewhere with Docassemble. There is a key for the `interview` that
+has a path to the question file and and a key for the `name` of the interview.
+These are the only two required keys in this list.
+
+There are two other important keys under the `interviews` section that are not
+required.
+
+1. If an interview is marked as `external` LegalServer will provide a read-only
+link instead of a clickable hyperlink. This way the link can be copied for a
+client to complete on their own later. By default, an interview is marked as
+`external: False`.
+1. We've added an additional list of `sites` under the `interviews` list to
+allow for a Docassemble server to be connected to multiple sites.Under the
+`sites` key should be a list of site abbreviations that the interview should be
+accessible to. If no values are specified, it will default to an empty list. If
+it is an empty list, it will be available to all sites. If the Docassemble
+server is connected to both your Live and Demo site, the same interview will be
+available for both sites. You can then chose not to make it active on either
+site as needed.
 
 ### LS Interviews Docassemble Endpoint
 
@@ -139,12 +158,14 @@ Optional additional permissions:
 * API Get Matter Service
 * API Get Matter Include Additional Names
 * API Get Matter Include Adverse Parties
+* API Get Matter Include Documents
 * API Get Matter Include Events
 * API Get Matter Include Non Adverse Parties
 * API Get Matter Include Notes
 * API Get Matter Include Tasks
 * API Get Matter Non Adverse Party
 * API Search Contact
+* API Search Documents
 * API Search Event
 * API Search Matter Additional Name
 * API Search Matter Adverse Party
@@ -171,6 +192,17 @@ will warn you when the token has expired.
 
 Note that all of the endpoints are included in the base level of API Access.
 Premium APIs are not required.
+
+## LegalServer Configuration
+
+In LegalServer, the administrator will need two User Role Permissions added:
+
+* Edit Docassemble Templates
+* Generate Docassemble Templates
+
+You'll need to then go to the Admin -> Docassemble Settings page. This is where
+the docassemble api token can be set. Then the list of Docassemble templates can
+be populated.
 
 ## Using this Package
 
@@ -204,6 +236,7 @@ in LegalServer
 * **legalserver_assignments**: DAList of Individual objects
 * **legalserver_charges**: DAList using DAObject objects
 * **legalserver_contacts**: DAList using DAIndividual objects
+* **legalserver_documents**: DAList using DAObject objects
 * **legalserver_events**: DAList using DAObject objects
 * **legalserver_tasks**: DAList using DAObject objects
 * **legalserver_incomes**: DAList using DAObject objects
@@ -248,6 +281,7 @@ code blocks to parse the data:
 * parse_legalserver_case_data
 * parse_legalserver_charge_data
 * parse_legalserver_contact_data
+* parse_legalserver_document_data
 * parse_legalserver_event_data
 * parse_legalserver_task_data
 * parse_legalserver_income_data
