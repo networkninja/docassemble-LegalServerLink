@@ -151,6 +151,7 @@ Optional additional permissions:
 * API Get Matter Additional Name
 * API Get Matter Adverse Party
 * API Get Matter Assignment
+* API Get Matter Associated Cases
 * API Get Matter Contact
 * API Get Matter Incomes
 * API Get Matter Litigations
@@ -170,6 +171,7 @@ Optional additional permissions:
 * API Search Matter Additional Name
 * API Search Matter Adverse Party
 * API Search Matter Assignments
+* API Search Matter Associated Cases
 * API Search Matter Contact
 * API Search Matter Incomes
 * API Search Matter Include Additional Names
@@ -233,6 +235,7 @@ in LegalServer
 * **client.additional_names**: DAList using IndividualName objects
 * **legalserver_case**: DAObject
 * **legalserver_adverse_parties**: DAList using Person objects
+* **legalserver_associated_cases**: DAList using DAObject objects
 * **legalserver_assignments**: DAList of Individual objects
 * **legalserver_charges**: DAList using DAObject objects
 * **legalserver_contacts**: DAList using DAIndividual objects

@@ -41,6 +41,22 @@ Format:
 ### Security
 - 
 -->
+## [1.1.2]
+
+### Added
+
+* Recent new matter parameters. 
+
+### Changed
+
+* Reorganized LSAPIs for easier exploration.
+
+## [1.1.1]
+
+### Added
+
+* Recent new user paramters are accounted for now.
+
 ## [1.1.0]
 
 ### Added
