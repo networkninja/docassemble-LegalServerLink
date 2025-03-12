@@ -439,10 +439,7 @@ request
 ## populate_income
 
 This is a keyword defined function that takes a DAList of DAObjects and
-populates it with the income details related to a case. If the general
-legalserver_data from the `get_matter_details` response is not included, it
-would make an API call using the `search_income_data` function. Unfortunately,
-the Search Income API endpoint does not currently exist.
+populates it with the income details related to a case. 
 
 ### Parameters
 
@@ -677,3 +674,197 @@ following LegalServer response objects:
 * Services
 * Tasks
 * Users
+
+## get_case_notes
+
+This is a keyword defined function that retrieves all the notes available on a
+case using the LegalServer [Get Case Notes](https://apidocs.legalserver.org/docs/ls-apis/0893f4ce9c6bd-get-case-notes)
+API. This returns the json dictionary of the data returned by the API.
+
+### Parameters
+
+* `legalserver_site` - required
+* `legalserver_matter_uuid` - required
+* `note_type` - optional string to filter on Note Type
+* `search_note_params` - optional dictionary of search parameters
+* `sort` - optional string to sort the results
+* `page_limit` - optional limit to the number of pages returned
+
+## get_case_events
+
+This is a keyword defined function that retrieves all the events available on a
+case using the LegalServer [Get Case Events](https://apidocs.legalserver.org/docs/ls-apis/2c5808abc9eca-get-case-events)
+API. This returns the json dictionary of the data returned by the API.
+
+### Parameters
+
+* `legalserver_site` - required
+* `legalserver_matter_uuid` - required
+* `event_type` - optional string to filter on Event Type
+* `search_event_params` - optional dictionary of search parameters
+* `sort` - optional string to sort the results
+* `page_limit` - optional limit to the number of pages returned
+
+## get_case_documents
+
+This is a keyword defined function that retrieves all the documents available on a
+case using the LegalServer [Get Case Documents](https://apidocs.legalserver.org/docs/ls-apis/3c6a922f8322b-get-case-documents)
+API. This returns the json dictionary of the data returned by the API.
+
+### Parameters
+
+* `legalserver_site` - required
+* `legalserver_matter_uuid` - required
+* `document_type` - optional string to filter on Document Type
+* `search_document_params` - optional dictionary of search parameters
+* `sort` - optional string to sort the results
+* `page_limit` - optional limit to the number of pages returned
+
+## get_case_tasks
+
+This is a keyword defined function that retrieves all the tasks available on a
+case using the LegalServer [Get Case Tasks](https://apidocs.legalserver.org/docs/ls-apis/6ac41dc42cefd-get-case-tasks)
+API. This returns the json dictionary of the data returned by the API.
+
+### Parameters
+
+* `legalserver_site` - required
+* `legalserver_matter_uuid` - required
+* `task_type` - optional string to filter on Task Type
+* `search_task_params` - optional dictionary of search parameters
+* `sort` - optional string to sort the results
+* `page_limit` - optional limit to the number of pages returned
+
+## get_case_services
+
+This is a keyword defined function that retrieves all the services available on a
+case using the LegalServer [Get Case Services](https://apidocs.legalserver.org/docs/ls-apis/1ee2dfa70d780-get-case-services)
+API. This returns the json dictionary of the data returned by the API.
+
+### Parameters
+
+* `legalserver_site` - required
+* `legalserver_matter_uuid` - required
+* `service_type` - optional string to filter on Service Type
+* `search_service_params` - optional dictionary of search parameters
+* `sort` - optional string to sort the results
+* `page_limit` - optional limit to the number of pages returned
+
+## get_case_litigations
+
+This is a keyword defined function that retrieves all the litigations available on a
+case using the LegalServer [Get Case Litigations](https://apidocs.legalserver.org/docs/ls-apis/2c5808abc9eca-get-case-litigations)
+API. This returns the json dictionary of the data returned by the API.
+
+### Parameters
+
+* `legalserver_site` - required
+* `legalserver_matter_uuid` - required
+* `litigation_type` - optional string to filter on Litigation Type
+* `search_litigation_params` - optional dictionary of search parameters
+* `sort` - optional string to sort the results
+* `page_limit` - optional limit to the number of pages returned
+
+## get_case_charges
+
+This is a keyword defined function that retrieves all the charges available on a
+case using the LegalServer [Get Case Charges](https://apidocs.legalserver.org/docs/ls-apis/17a3bff662f12-get-case-charges)
+API. This returns the json dictionary of the data returned by the API.
+
+### Parameters
+
+* `legalserver_site` - required
+* `legalserver_matter_uuid` - required
+* `charge_type` - optional string to filter on Charge Type
+* `search_charge_params` - optional dictionary of search parameters
+* `sort` - optional string to sort the results
+* `page_limit` - optional limit to the number of pages returned
+
+## get_case_contacts
+
+This is a keyword defined function that retrieves all the contacts available on a
+case using the LegalServer [Get Case Contacts](https://apidocs.legalserver.org/docs/ls-apis/d0e8009ab22f3-get-case-contacts)
+API. This returns the json dictionary of the data returned by the API.
+
+### Parameters
+
+* `legalserver_site` - required
+* `legalserver_matter_uuid` - required
+* `contact_type` - optional string to filter on Contact Type
+* `search_contact_params` - optional dictionary of search parameters
+* `sort` - optional string to sort the results
+* `page_limit` - optional limit to the number of pages returned
+
+## get_case_assignments
+
+This is a keyword defined function that retrieves all the assignments available on a
+case using the LegalServer [Get Case Assignments](https://apidocs.legalserver.org/docs/ls-apis/2bb652635011a-get-case-assignments)
+API. This returns the json dictionary of the data returned by the API.
+
+### Parameters
+
+* `legalserver_site` - required
+* `legalserver_matter_uuid` - required
+* `assignment_type` - optional string to filter on Assignment Type
+* `search_assignment_params` - optional dictionary of search parameters
+* `sort` - optional string to sort the results
+* `page_limit` - optional limit to the number of pages returned
+
+## get_case_non_adverse_parties
+
+This is a keyword defined function that retrieves all the non-adverse parties available on a
+case using the LegalServer [Get Case Non-Adverse Parties](https://apidocs.legalserver.org/)
+API. This returns the json dictionary of the data returned by the API.
+
+### Parameters
+
+* `legalserver_site` - required
+* `legalserver_matter_uuid` - required
+* `non_adverse_party_type` - optional string to filter on Non-Adverse Party Type
+* `search_non_adverse_party_params` - optional dictionary of search parameters
+* `sort` - optional string to sort the results
+* `page_limit` - optional limit to the number of pages returned
+
+## get_case_adverse_parties
+
+This is a keyword defined function that retrieves all the adverse parties available on a
+case using the LegalServer [Get Case Adverse Parties](https://apidocs.legalserver.org/docs/ls-apis/by52yohjpvtbh-get-case-adverse-parties)
+API. This returns the json dictionary of the data returned by the API.
+
+### Parameters
+
+* `legalserver_site` - required
+* `legalserver_matter_uuid` - required
+* `adverse_party_type` - optional string to filter on Adverse Party Type
+* `search_adverse_party_params` - optional dictionary of search parameters
+* `sort` - optional string to sort the results
+* `page_limit` - optional limit to the number of pages returned
+
+## get_case_additional_names
+
+This is a keyword defined function that retrieves all the additional names available on a
+case using the LegalServer [Get Case Additional Names](https://apidocs.legalserver.org/docs/ls-apis/ctyddn3f0bz92-get-case-additional-names)
+API. This returns the json dictionary of the data returned by the API.
+
+### Parameters
+
+* `legalserver_site` - required
+* `legalserver_matter_uuid` - required
+* `additional_name_type` - optional string to filter on Additional Name Type
+* `search_additional_name_params` - optional dictionary of search parameters
+* `sort` - optional string to sort the results
+* `page_limit` - optional limit to the number of pages returned
+
+## populate_associated_cases
+
+This is a keyword defined function that takes a DAList of DAObjects and
+populates it with the associated case details related to a case. If the general
+legalserver_data from the `get_matter_details` response is not included, it does not make a separate API call since there is not a dedicated endpoint.
+
+### Parameters
+
+* `associated_case_list` - DAList of DAObjects
+* `legalserver_data` - Optional dictionary of the matter data from a LegalServer
+request
+* `legalserver_matter_uuid` - needed if the `legalserver_data` is not provided
+* `legalserver_site` - needed if the `legalserver_data` is not provided
