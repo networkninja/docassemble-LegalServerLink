@@ -12,7 +12,7 @@ comment:
   authors:
     - name: LegalServer
       organization: Network Ninja, Inc.
-  revision_date: 2024-03-20
+  revision_date: 2023-09-12
 ---
 if: client_is_organization
 objects:
@@ -32,6 +32,7 @@ objects:
   - legalserver_events: DAList.using(object=DAObject, there_are_any=True, auto_gather=False, complete_attribute='complete')
   - legalserver_tasks: DAList.using(object=DAObject, there_are_any=True, auto_gather=False, complete_attribute='complete')
   - client.additional_names: DAList.using(object=IndividualName, there_are_any=True, auto_gather=False, complete_attribute='complete')
+  - legalserver_associated_cases: DAList.using(object=DAObject, there_are_any=True, auto_gather=False, complete_attribute='complete')
   - legalserver_adverse_parties: DAList.using(object=Person, there_are_any=True, auto_gather=False, complete_attribute='complete')
   - legalserver_non_adverse_parties: DAList.using(object=Person, there_are_any=True, auto_gather=False, complete_attribute='complete')
   - legalserver_primary_assignment: Individual
@@ -210,6 +211,11 @@ code: |
 ---
 code: |
   raise_errors_getting_legalserver_data
+  populate_associated_cases(associated_case_list=legalserver_associated_cases, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
+  parse_legalserver_associated_cases_data = True  
+---
+code: |
+  raise_errors_getting_legalserver_data
   populate_contacts(contact_list=legalserver_contacts, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)  
   parse_legalserver_contact_data = True
 ---
@@ -257,4 +263,5 @@ code: |
   parse_legalserver_primary_assignment
   parse_legalserver_pro_bono_assignments
   parse_legalserver_current_user
+  parse_legalserver_associated_cases_data
   parse_all_legalserver_data = True
