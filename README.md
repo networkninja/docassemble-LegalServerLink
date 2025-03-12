@@ -138,12 +138,12 @@ For more details, see [API Authentication](https://apidocs.legalserver.org/docs/
 The User Role needs to have the following permissions:
 
 * API Access
-* API Get Matter
-* API Documents Webhook
+* API - Documate Webhook
 * API Get Contact
+* API Get Matter
 * API Get Organization
-* API Get User
 * API Get/Search Matter Full Results
+* API Get User
 
 Optional additional permissions:
 
@@ -153,33 +153,32 @@ Optional additional permissions:
 * API Get Matter Assignment
 * API Get Matter Associated Cases
 * API Get Matter Contact
-* API Get Matter Incomes
-* API Get Matter Litigations
-* API Get Matter Notes
-* API Get Matter Service
 * API Get Matter Include Additional Names
 * API Get Matter Include Adverse Parties
-* API Get Matter Include Documents
 * API Get Matter Include Events
 * API Get Matter Include Non Adverse Parties
 * API Get Matter Include Notes
 * API Get Matter Include Tasks
+* API Get Matter Incomes
+* API Get Matter Litigation
 * API Get Matter Non Adverse Party
+* API Get Matter Notes
+* API Get Matter Service
 * API Search Contact
-* API Search Documents
+* API Search Document
 * API Search Event
 * API Search Matter Additional Name
 * API Search Matter Adverse Party
-* API Search Matter Assignments
+* API Search Matter Assignment
 * API Search Matter Associated Cases
 * API Search Matter Contact
-* API Search Matter Incomes
 * API Search Matter Include Additional Names
 * API Search Matter Include Adverse Parties
 * API Search Matter Include Events
 * API Search Matter Include Non Adverse Parties
 * API Search Matter Include Notes
 * API Search Matter Include Tasks
+* API Search Matter Incomes
 * API Search Matter Litigation
 * API Search Matter Non Adverse Party
 * API Search Matter Notes
@@ -199,8 +198,8 @@ Premium APIs are not required.
 
 In LegalServer, the administrator will need two User Role Permissions added:
 
-* Edit Docassemble Templates
-* Generate Docassemble Templates
+* Edit Docassemble Interviews
+* Generate Docassemble Interviews
 
 You'll need to then go to the Admin -> Docassemble Settings page. This is where
 the docassemble api token can be set. Then the list of Docassemble templates can
