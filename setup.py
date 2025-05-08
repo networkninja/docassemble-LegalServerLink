@@ -57,7 +57,7 @@ def find_package_data(
 
 
 setup(
-    name="docassemble.LSDocassembleLink",
+    name="docassemble.LegalServerLink",
     version="1.1.2",
     description=("A docassemble extension linking LegalServer and Docassemble."),
     long_description="# LegalServer and Docassemble Link",
@@ -76,6 +76,6 @@ setup(
     ],
     zip_safe=False,
     package_data=find_package_data(
-        where="docassemble/LSDocassembleLink/", package="docassemble.LSDocassembleLink"
+        where="docassemble/LegalServerLink/", package="docassemble.LegalServerLink"
     ),
 )
