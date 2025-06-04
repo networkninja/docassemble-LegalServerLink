@@ -12,25 +12,32 @@ from docassemble.base.util import (
     DAObject,
     Person,
     IndividualName,
+    Name,
     current_datetime,
     date_interval,
     date_difference,
     path_and_mimetype,
+    DAFile,
 )
 import zipfile
 from typing import List, Dict, Union, Optional, Any
 import os.path
 from os import listdir
+import re
+from typing import Union
 
 __all__ = [
+    "check_custom_fields",
     "check_legalserver_token",
     "count_of_pro_bono_assignments",
     "country_code_from_name",
     "get_contact_details",
+    "get_document",
     "get_matter_details",
     "get_organization_details",
     "get_user_details",
     "get_legalserver_report_data",
+    "human_readable_size",
     "is_zip_file",
     "language_code_from_name",
     "list_templates",
@@ -42,13 +49,21 @@ __all__ = [
     "populate_charges",
     "populate_client",
     "populate_contacts",
+    "populate_contact_data",
     "populate_current_user",
     "populate_documents",
+    "populate_event_data",
     "populate_events",
     "populate_first_pro_bono_assignment",
+    "populate_given_contact",
+    "populate_given_event",
+    "populate_given_organization",
+    "populate_given_task",
+    "populate_given_user",
     "populate_income",
     "populate_latest_pro_bono_assignment",
     "populate_litigations",
+    "populate_organization_data",
     "populate_non_adverse_parties",
     "populate_notes",
     "populate_primary_assignment",
@@ -89,6 +104,36 @@ __all__ = [
     "standard_task_keys",
     "standard_user_keys",
 ]
+
+
+def check_custom_fields(response_obj):
+    """
+    Check if the response contains any custom fields at the top level.
+    Custom fields are identified by ending with an underscore followed by an integer.
+
+    Args:
+        response_obj: The parsed JSON response object (dict)
+
+    Returns:
+        tuple: (bool, list) where:
+            - bool: True if custom fields are present, False otherwise
+            - list: List of custom field keys found
+    """
+    if not isinstance(response_obj, dict):
+        return False, []
+
+    # Pattern for custom fields: ending with underscore followed by digits
+    pattern = re.compile(r"_\d+$")
+
+    # Find all custom field keys
+    custom_keys = [
+        key
+        for key in response_obj.keys()
+        if isinstance(key, str) and pattern.search(key)
+    ]
+
+    # Return whether custom fields exist and the list of custom field keys
+    return bool(custom_keys), custom_keys
 
 
 def check_legalserver_token(*, legalserver_site: str) -> Dict:
@@ -181,6 +226,35 @@ def country_code_from_name(country_name_string: str) -> str:
     return country_code
 
 
+def human_readable_size(size_bytes: Union[int, float]) -> str:
+    """
+    Convert size in bytes to a human-readable format (KB, MB, GB, etc.)
+
+    Args:
+        size_bytes (int or float): The size in bytes.
+
+    Returns:
+        str: Human-readable size string.
+
+    Raises:
+        ValueError: If size_bytes is negative or not a number.
+    """
+    if not isinstance(size_bytes, (int, float)):
+        raise ValueError("size_bytes must be an integer or float")
+    if size_bytes < 0:
+        raise ValueError("size_bytes must be non-negative")
+    if size_bytes == 0:
+        return "0B"
+
+    size_names = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
+    i = 0
+    while size_bytes >= 1024 and i < len(size_names) - 1:
+        size_bytes /= 1024
+        i += 1
+
+    return f"{size_bytes:.2f} {size_names[i]}"
+
+
 def get_contact_details(
     *,
     legalserver_site: str,
@@ -207,13 +281,14 @@ def get_contact_details(
         dictionary response includes a key of 'error'
     """
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/contacts/{legalserver_contact_uuid}"
 
     queryparam_data = {}
     if custom_fields:
-        queryparam_data["custom_fields"] = custom_fields
+        if has_valid_items(custom_fields):
+            queryparam_data["custom_fields"] = format_field_list(custom_fields)
 
     return_data = get_legalserver_response(
         url=url,
@@ -227,14 +302,106 @@ def get_contact_details(
     return return_data
 
 
+def get_document(
+    *, legalserver_site: str, document_uuid: str, document_name: str = "document.pdf"
+) -> tuple[DAFile | None, bool]:
+    """
+    Retrieves a document from the LegalServer API.
+    Args:
+        legalserver_site (str): The LegalServer site URL.
+        document_uuid (str): The unique identifier of the document.
+        document_name (str): The name to save the document as. Defaults to "document.pdf".
+    Returns:
+        tuple: (DAFile, bool) - The downloaded document file and a success boolean.
+    """
+    header_content = get_legalserver_token(legalserver_site=legalserver_site)
+
+    the_file = DAFile()
+    the_file.set_random_instance_name()
+    the_file.initialize(filename=document_name)
+    url = (
+        "https://" + legalserver_site + ".legalserver.org/modules/document/download.php"
+    )
+    queryparams = {"unique_id": document_uuid}
+
+    try:
+        log(
+            f"Attempting to retrieve the following file {str(document_uuid)} from {legalserver_site}"
+        )
+        response = requests.get(
+            headers=header_content, url=url, params=queryparams, timeout=(3, 30)
+        )
+        response.raise_for_status()
+
+        open(the_file.path(), "wb").write(response.content)
+        the_file.commit()
+        return the_file, True
+
+    except Exception as e:
+        log(f"LegalServer retrieving document with {str(queryparams)} failed: {e}")
+        return None, False
+
+
+def get_event_details(
+    *,
+    legalserver_site: str,
+    legalserver_event_uuid: str,
+    custom_fields: list | None = None,
+    sort: str | None = None,
+) -> Dict:
+    """Get details about a specific Event record in LegalServer.
+
+    This uses LegalServer's Get Event API to get back details of just
+    one specific event record.
+
+    Args:
+        legalserver_site (str): The specific LegalServer site to
+            check for the organization on.
+        legalserver_event_uuid (dict): The UUID of the specific LegalServer
+            event to retrieve
+        custom_fields (list): A optional list of custom fields to include.
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+
+    Returns:
+        A dictionary for the event record.
+
+    Raises:
+        Errors are handled in the response. Errors will be present when the
+        dictionary response includes a key of 'error'
+    """
+    header_content = get_legalserver_token(legalserver_site=legalserver_site)
+    header_content["Accept"] = "application/json"
+
+    url = f"https://{legalserver_site}.legalserver.org/api/v2/events/{legalserver_event_uuid}"
+
+    queryparam_data: Dict[str, Union[str, List[str]]] = {}
+    if custom_fields:
+        if has_valid_items(custom_fields):
+            queryparam_data["custom_fields"] = format_field_list(custom_fields)
+
+    if sort in {"asc", "desc"}:
+        queryparam_data["sort"] = sort
+
+    return_data = get_legalserver_response(
+        url=url,
+        params=queryparam_data,
+        legalserver_site=legalserver_site,
+        source_type="events",
+        header_content=header_content,
+        uuid=legalserver_event_uuid,
+    )
+
+    return return_data
+
+
 def get_matter_details(
     *,
     legalserver_site: str,
     legalserver_matter_uuid: str,
-    custom_fields: list | None = None,
-    custom_fields_services: list | None = None,
-    custom_fields_litigations: list | None = None,
-    custom_fields_charges: list | None = None,
+    custom_fields: list[str] | None = None,
+    custom_fields_services: list[str] | None = None,
+    custom_fields_litigations: list[str] | None = None,
+    custom_fields_charges: list[str] | None = None,
     sort: str | None = None,
 ) -> Dict:
     """This function gets the Details of a LegalServer matter using the Get
@@ -261,23 +428,36 @@ def get_matter_details(
     """
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
 
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
-    url = f"https://{legalserver_site}.legalserver.org/api/v2/matters/{legalserver_matter_uuid}"
+    base_url = f"https://{legalserver_site}.legalserver.org/api/v2/matters/{legalserver_matter_uuid}/"
 
     queryparam_data: Dict[str, Union[str, List[str]]] = {}
+
     if custom_fields:
-        queryparam_data["custom_fields"] = custom_fields
+        if has_valid_items(custom_fields):
+            queryparam_data["custom_fields"] = format_field_list(custom_fields)
+
     if custom_fields_litigations:
-        queryparam_data["custom_fields_litigations"] = custom_fields_litigations
+        if has_valid_items(custom_fields_litigations):
+            queryparam_data["custom_fields_litigations"] = format_field_list(
+                custom_fields_litigations
+            )
+
     if custom_fields_charges:
-        queryparam_data["custom_fields_charges"] = custom_fields_charges
+        if has_valid_items(custom_fields_charges):
+            queryparam_data["custom_fields_charges"] = format_field_list(
+                custom_fields_charges
+            )
+
     if custom_fields_services:
-        queryparam_data["custom_fields_services"] = custom_fields_services
-    if sort == "asc":
-        queryparam_data["sort"] = "asc"
-    elif sort == "desc":
-        queryparam_data["sort"] = "desc"
+        if has_valid_items(custom_fields_services):
+            queryparam_data["custom_fields_services"] = format_field_list(
+                custom_fields_services
+            )
+
+    # Construct the full URL with custom fields in the query string
+    url = base_url
 
     return_data = get_legalserver_response(
         url=url,
@@ -320,13 +500,15 @@ def get_organization_details(
 
     """
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/organizations/{legalserver_organization_uuid}"
     queryparam_data: Dict[str, Union[str, List[str]]] = {}
 
     if custom_fields:
-        queryparam_data["custom_fields"] = custom_fields
+        if has_valid_items(custom_fields):
+            queryparam_data["custom_fields"] = format_field_list(custom_fields)
+
     if sort == "asc":
         queryparam_data["sort"] = "asc"
     elif sort == "desc":
@@ -339,6 +521,62 @@ def get_organization_details(
         source_type="organization",
         header_content=header_content,
         uuid=legalserver_organization_uuid,
+    )
+
+    return return_data
+
+
+def get_task_details(
+    *,
+    legalserver_site: str,
+    legalserver_task_uuid: str,
+    custom_fields: list | None = None,
+    sort: str | None = None,
+) -> Dict:
+    """This returns information about a specific Task in LegalServer.
+
+    This uses LegalServer's Get Task API to get back details of just
+    one specific of Task.
+
+    Args:
+        legalserver_site (str): The specific LegalServer site to
+            check for the task on.
+        legalserver_task_uuid (dict): The UUID of the specific LegalServer
+            task to retrieve
+        custom_fields (list): A optional list of custom fields to include.
+        sort (str): Optional string to sort the results by. Defaults to ASC.
+
+    Returns:
+        A dictionary for the specific task.
+
+    Raises:
+        Errors are handled in the response. Errors will be present when the
+        dictionary response includes a key of 'error'
+
+
+    """
+    header_content = get_legalserver_token(legalserver_site=legalserver_site)
+    header_content["Accept"] = "application/json"
+
+    url = f"https://{legalserver_site}.legalserver.org/api/v2/tasks/{legalserver_task_uuid}"
+    queryparam_data: Dict[str, Union[str, List[str]]] = {}
+
+    if custom_fields:
+        if has_valid_items(custom_fields):
+            queryparam_data["custom_fields"] = format_field_list(custom_fields)
+
+    if sort == "asc":
+        queryparam_data["sort"] = "asc"
+    elif sort == "desc":
+        queryparam_data["sort"] = "desc"
+
+    return_data = get_legalserver_response(
+        url=url,
+        params=queryparam_data,
+        legalserver_site=legalserver_site,
+        source_type="tasks",
+        header_content=header_content,
+        uuid=legalserver_task_uuid,
     )
 
     return return_data
@@ -367,13 +605,14 @@ def get_user_details(
     Returns:
         A dictionary with the specific user data."""
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/users/{legalserver_user_uuid}"
     queryparam_data = {}
 
     if custom_fields:
-        queryparam_data["custom_fields"] = custom_fields
+        if has_valid_items(custom_fields):
+            queryparam_data["custom_fields"] = format_field_list(custom_fields)
 
     return_data = get_legalserver_response(
         url=url,
@@ -722,6 +961,32 @@ def get_source_module_data(
     return source
 
 
+def has_valid_items(field_list: Optional[List[str]]) -> bool:
+    """Check if a list contains at least one non-empty string.
+
+    Args:
+        field_list: A list of strings to check, or None
+
+    Returns:
+        True if the list exists and contains at least one non-empty string,
+        False otherwise
+    """
+    return field_list is not None and any(item.strip() for item in field_list)
+
+
+def format_field_list(field_list: List[str]) -> str:
+    """Format a list of fields with proper quoting for the LegalServer API.
+
+    Args:
+        field_list: A list of field names to format
+
+    Returns:
+        A string in the format ["field1","field2"] with empty fields removed
+    """
+    valid_fields = [f'"{field}"' for field in field_list if field.strip()]
+    return f"[{','.join(valid_fields)}]"
+
+
 def is_zip_file(file_path: str) -> bool:
     """Checks to see if this file is a zip file.
 
@@ -800,11 +1065,15 @@ def list_templates(package_name: str = "") -> List:
     else:
         template_path = "data/templates/README.md"
 
-    files = [
-        str(path)
-        for path in os.listdir(os.path.dirname(path_and_mimetype(template_path)[0]))
-        if not path.startswith(".")
-    ]
+    template_dir_path = path_and_mimetype(template_path)[0]
+    if template_dir_path is None:
+        files = []
+    else:
+        files = [
+            str(path)
+            for path in os.listdir(os.path.dirname(template_dir_path))
+            if not path.startswith(".")
+        ]
     if "README.md" in files:
         files.remove("README.md")
     return files
@@ -1000,7 +1269,8 @@ def populate_adverse_parties(
                 if item.get("suffix") is not None:
                     new_ap.name.suffix = item.get("suffix")
             else:
-                new_ap.name = item.get("organization_name")
+                new_ap.initializeAttribute("name", Name)
+                new_ap.name.text = item.get("organization_name")
             if item.get("business_type") is not None:
                 if item.get("business_type").get("lookup_value_name") is not None:
                     new_ap.business_type = item["business_type"].get(
@@ -1725,6 +1995,36 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
         case.modified_by_integration_or_api = legalserver_data.get(
             "modified_by_integration_or_api"
         )
+    if legalserver_data.get("trial_date") is not None:
+        case.trial_date = legalserver_data.get("trial_date")
+    if legalserver_data.get("date_of_appointment_retention") is not None:
+        case.date_of_appointment_retention = legalserver_data.get(
+            "date_of_appointment_retention"
+        )
+    if legalserver_data.get("api_integration_preference") is not None:
+        if (
+            legalserver_data["api_integration_preference"].get("lookup_value_name")
+            is not None
+        ):
+            case.api_integration_preference = legalserver_data[
+                "api_integration_preference"
+            ].get("lookup_value_name")
+    temp_list = []
+    for num in legalserver_data["court_tracking_numbers"]:
+        if num.get("court_tracking_number") is not None:
+            temp_list.append(num.get("court_tracking_number"))
+    if temp_list:
+        case.court_tracking_numbers = temp_list
+    del temp_list
+    if legalserver_data.get("sharepoint_tracer_document_id") is not None:
+        case.sharepoint_tracer_document_id = legalserver_data.get(
+            "sharepoint_tracer_document_id"
+        )
+    if legalserver_data.get("dropbox_folder_id") is not None:
+        case.dropbox_folder_id = legalserver_data.get("dropbox_folder_id")
+    if legalserver_data.get("google_drive_folder_id") is not None:
+        case.google_drive_folder_id = legalserver_data.get("google_drive_folder_id")
+
     # Custom Fields are funny
     standard_key_list = standard_matter_keys()
     custom_fields = {
@@ -1809,6 +2109,8 @@ def populate_charges(
                     new_charge.charge_outcome_id = item["charge_outcome_id"].get(
                         "lookup_value_name"
                     )
+                if item.get("charge_name") is not None:
+                    new_charge.charge_name = item.get("charge_name")
                 if item.get("disposition_date") is not None:
                     new_charge.disposition_date = item.get("disposition_date")
                 if item.get("top_charge") is not None:
@@ -1910,6 +2212,12 @@ def populate_client(
         client.email = legalserver_data.get("client_email_address")
     if legalserver_data.get("date_of_birth") is not None:
         client.birthdate = legalserver_data.get("date_of_birth")
+    if legalserver_data.get("dob_status") is not None:
+        if legalserver_data["dob_status"].get("lookup_value_name") is not None:
+            client.dob_status = legalserver_data["dob_status"].get("lookup_value_name")
+    if legalserver_data.get("ssn_status") is not None:
+        if legalserver_data["ssn_status"].get("lookup_value_name") is not None:
+            client.ssn_status = legalserver_data["ssn_status"].get("lookup_value_name")
     if legalserver_data.get("salutation") is not None:
         client.salutation_to_use = legalserver_data.get("salutation")
     if legalserver_data.get("disabled") is not None:
@@ -2054,6 +2362,11 @@ def populate_client(
     if legalserver_data.get("citizenship_country") is not None:
         if legalserver_data["citizenship_country"].get("lookup_value_name") is not None:
             client.citizenship_country = legalserver_data["citizenship_country"].get(
+                "lookup_value_name"
+            )
+    if legalserver_data.get("country_of_origin") is not None:
+        if legalserver_data["country_of_origin"].get("lookup_value_name") is not None:
+            client.country_of_origin = legalserver_data["country_of_origin"].get(
                 "lookup_value_name"
             )
     if legalserver_data.get("immigration_status") is not None:
@@ -2350,37 +2663,83 @@ def populate_contacts(
         for item in source:
             if isinstance(item, dict):
                 # item: Individual = item  # type annotation
-                new_contact = contact_list.appendObject(Individual)
-                # new_contact.id = item.get('id')
-                new_contact.uuid = item.get("case_contact_uuid")
-                if item.get("contact_uuid") is not None:
-                    new_contact.contact_uuid = item.get("contact_uuid")
-                if item.get("first") is not None:
-                    new_contact.name.first = item.get("first")
-                if item.get("middle") is not None:
-                    new_contact.name.middle = item.get("middle")
-                if item.get("last") is not None:
-                    new_contact.name.last = item.get("last")
-                if item["case_contact_type"].get("lookup_value_name") is not None:
-                    new_contact.type = item["case_contact_type"].get(
-                        "lookup_value_name"
-                    )
-                if item.get("suffix") is not None:
-                    new_contact.name.suffix = item.get("suffix")
-                if item.get("business_phone") is not None:
-                    new_contact.phone = item.get("business_phone")
-                if item.get("email") is not None:
-                    new_contact.email = item.get("email")
-                new_contact.contact_types = []
-                for type in item["contact_types"]:
-                    if type.get("lookup_value_name") is not None:
-                        new_contact.contact_types.append(type.get("lookup_value_name"))
 
+                new_contact = contact_list.appendObject(Individual)
+                new_contact = populate_contact_data(
+                    contact=new_contact, contact_data=item  # type: ignore
+                )
                 new_contact.complete = True
                 log(f"Contacts Populated for a case.")
 
     contact_list.gathered = True
     return contact_list
+
+
+def populate_contact_data(*, contact: Individual, contact_data: dict) -> Individual:
+    """Take the data from LegalServer and populate an individual Contact Record.
+
+    This is a keyword defined function that takes a given Individual and populates
+    it with Contact data from LegalServer.
+
+    Args:
+        contact (Individual): required Individual for
+            the contact.
+        contact_data (dict): required dictionary of the contact data from a
+            LegalServer request.
+
+    Returns:
+        An Individual object.
+    """
+
+    contact.id = contact_data.get("id")
+    contact.uuid = contact_data.get("contact_uuid")
+
+    if contact_data.get("case_contact_uuid") is not None:
+        contact.case_contact_uuid = contact_data.get("case_contact_uuid")
+    contact.initializeAttribute("name", IndividualName)
+    if contact_data.get("first") is not None:
+        contact.name.first = contact_data.get("first")
+    if contact_data.get("middle") is not None:
+        contact.name.middle = contact_data.get("middle")
+    if contact_data.get("last") is not None:
+        contact.name.last = contact_data.get("last")
+    if contact_data.get("case_contact_type") is not None:
+        if contact_data["case_contact_type"].get("lookup_value_name") is not None:
+            contact.type = contact_data["case_contact_type"].get("lookup_value_name")
+    if contact_data.get("suffix") is not None:
+        contact.name.suffix = contact_data.get("suffix")
+    if contact_data.get("business_phone") is not None:
+        contact.phone = contact_data.get("business_phone")
+    if contact_data.get("email") is not None:
+        contact.email = contact_data.get("email")
+
+    templist = []
+    if contact_data.get("type") is not None:
+        for type in contact_data["type"]:
+            if type.get("lookup_value_name") is not None:
+                templist.append(type.get("lookup_value_name"))
+        if templist:
+            contact.type = templist
+    del templist
+    templist = []
+    if contact_data.get("contact_types") is not None:
+        for type in contact_data["contact_types"]:
+            if type.get("lookup_value_name") is not None:
+                templist.append(type.get("lookup_value_name"))
+        if templist:
+            contact.contact_types = templist
+    del templist
+
+    standard_key_list = standard_contact_keys()
+    custom_fields = {
+        key: value
+        for key, value in contact_data.items()
+        if key not in standard_key_list
+    }
+    if custom_fields is not None:
+        contact.custom_fields = custom_fields
+
+    return contact
 
 
 def populate_current_user(
@@ -2460,10 +2819,16 @@ def populate_documents(
                 new_document.id = item.get("id")
                 if item.get("name") is not None:
                     new_document.name = item.get("name")
+                else:
+                    new_document.name = ""
                 if item.get("title") is not None:
                     new_document.title = item.get("title")
+                else:
+                    new_document.title = ""
                 if item.get("mime_type") is not None:
                     new_document.mime_type = item.get("mime_type")
+                else:
+                    new_document.mime_type = ""
                 if item.get("virus_free") is not None:
                     new_document.virus_free = item.get("virus_free")
                 if item.get("date_create") is not None:
@@ -2474,6 +2839,8 @@ def populate_documents(
                     new_document.virus_scanned = item.get("virus_scanned")
                 if item.get("disk_file_size") is not None:
                     new_document.disk_file_size = item.get("disk_file_size")
+                else:
+                    new_document.disk_file_size = 0
                 if item["storage_backend"].get("lookup_value_name") is not None:
                     new_document.storage_backend = item["storage_backend"].get(
                         "lookup_value_name"
@@ -2503,6 +2870,102 @@ def populate_documents(
     document_list.gathered = True
 
     return document_list
+
+
+def populate_event_data(*, event: DAObject, event_data: dict) -> DAObject:
+    """Take the data from LegalServer and populate a given event from the
+    LegalServer data.
+
+    This is a keyword defined function that takes a given DAObject and
+    populates it with event details from LegalServer.
+    Args:
+        event (DAObject): DAObject for the event
+        event_data (dict): Optional dictionary of the event data from a
+            LegalServer request.
+
+    Returns:
+        A DAObject with the given event record.
+    """
+
+    # item: DAObject = item  # type annotation
+
+    event.id = event_data.get("id")
+    event.uuid = event_data.get("event_uuid")
+    if event_data.get("title") is not None:
+        event.title = event_data.get("title")
+    if event_data.get("location") is not None:
+        event.location = event_data.get("location")
+    if event_data.get("front_desk") is not None:
+        event.front_desk = event_data.get("front_desk")
+    if event_data.get("broadcast_event") is not None:
+        event.broadcast_event = event_data.get("broadcast_event")
+    if event_data.get("court") is not None:
+        if event_data["court"].get("organization_name") is not None:
+            event.court_name = event_data["court"].get("organization_name")
+        if event_data["court"].get("organization_uuid") is not None:
+            event.court_uuid = event_data["court"].get("organization_uuid")
+    if event_data.get("courtroom") is not None:
+        event.courtroom = event_data.get("courtroom")
+    if event_data["event_type"].get("lookup_value_name") is not None:
+        event.event_type = event_data["event_type"].get("lookup_value_name")
+    if event_data.get("judge") is not None:
+        event.judge = event_data.get("judge")
+    if event_data.get("attendees") is not None:
+        event.attendees = event_data.get("attendees")
+    if event_data.get("private_event") is not None:
+        event.private_event = event_data.get("private_event")
+    temp_list = []
+    for user in event_data["attendees"]:
+        if user.get("user_uuid") is not None:
+            temp_list.append(
+                {
+                    "user_uuid": user.get("user_uuid"),
+                    "user_name": user.get("user_name"),
+                }
+            )
+    if temp_list:
+        event.attendees = temp_list
+    del temp_list
+
+    if event_data.get("dynamic_process_id") is not None:
+        if event_data["dynamic_process_id"].get("dynamic_process_id") is not None:
+            event.dynamic_process_id = event_data["dynamic_process_id"].get(
+                "dynamic_process_id"
+            )
+        if event_data["dynamic_process_id"].get("dynamic_process_uuid") is not None:
+            event.dynamic_process_uuid = event_data["dynamic_process_id"].get(
+                "dynamic_process_uuid"
+            )
+        if event_data["dynamic_process_id"].get("dynamic_process_name") is not None:
+            event.dynamic_process_name = event_data["dynamic_process_id"].get(
+                "dynamic_process_name"
+            )
+    # start and end dates of None if not otherwise
+    # if item.get("start_datetime") is not None:
+    event.start_datetime = event_data.get("start_datetime")
+    # if item.get("end_datetime") is not None:
+    event.end_datetime = event_data.get("end_datetime")
+    if event_data.get("all_day_event") is not None:
+        event.all_day_event = event_data.get("all_day_event")
+    if event_data["program"].get("lookup_value_name") is not None:
+        event.program = event_data["program"].get("lookup_value_name")
+    if event_data.get("office") is not None:
+        if event_data["office"].get("office_name") is not None:
+            event.office_name = event_data["office"].get("office_name")
+        if event_data["office"].get("office_code") is not None:
+            event.office_code = event_data["office"].get("office_code")
+    if event_data.get("external_id") is not None:
+        event.external_id = event_data.get("external_id")
+
+    standard_key_list = standard_event_keys()
+    custom_fields = {
+        key: value for key, value in event_data.items() if key not in standard_key_list
+    }
+    if custom_fields is not None:
+        event.custom_fields = custom_fields
+    del custom_fields
+
+    return event
 
 
 def populate_events(
@@ -2545,90 +3008,8 @@ def populate_events(
         for item in source:
             if isinstance(item, dict):
                 # item: DAObject = item  # type annotation
-                new_event = event_list.appendObject()
-                new_event.id = item.get("id")
-                new_event.uuid = item.get("event_uuid")
-                if item.get("title") is not None:
-                    new_event.title = item.get("title")
-                if item.get("location") is not None:
-                    new_event.location = item.get("location")
-                if item.get("front_desk") is not None:
-                    new_event.front_desk = item.get("front_desk")
-                if item.get("broadcast_event") is not None:
-                    new_event.broadcast_event = item.get("broadcast_event")
-                if item.get("court") is not None:
-                    if item["court"].get("organization_name") is not None:
-                        new_event.court_name = item["court"].get("organization_name")
-                    if item["court"].get("organization_uuid") is not None:
-                        new_event.court_uuid = item["court"].get("organization_uuid")
-                if item.get("courtroom") is not None:
-                    new_event.courtroom = item.get("courtroom")
-                if item["event_type"].get("lookup_value_name") is not None:
-                    new_event.event_type = item["event_type"].get("lookup_value_name")
-                if item.get("judge") is not None:
-                    new_event.judge = item.get("judge")
-                if item.get("attendees") is not None:
-                    new_event.attendees = item.get("attendees")
-                if item.get("private_event") is not None:
-                    new_event.private_event = item.get("private_event")
-                temp_list = []
-                for user in item["attendees"]:
-                    if user.get("user_uuid") is not None:
-                        temp_list.append(
-                            {
-                                "user_uuid": user.get("user_uuid"),
-                                "user_name": user.get("user_name"),
-                            }
-                        )
-                if temp_list:
-                    new_event.attendees = temp_list
-                del temp_list
-
-                if item.get("dynamic_process_id") is not None:
-                    if item["dynamic_process_id"].get("dynamic_process_id") is not None:
-                        new_event.dynamic_process_id = item["dynamic_process_id"].get(
-                            "dynamic_process_id"
-                        )
-                    if (
-                        item["dynamic_process_id"].get("dynamic_process_uuid")
-                        is not None
-                    ):
-                        new_event.dynamic_process_uuid = item["dynamic_process_id"].get(
-                            "dynamic_process_uuid"
-                        )
-                    if (
-                        item["dynamic_process_id"].get("dynamic_process_name")
-                        is not None
-                    ):
-                        new_event.dynamic_process_name = item["dynamic_process_id"].get(
-                            "dynamic_process_name"
-                        )
-                # start and end dates of None if not otherwise
-                # if item.get("start_datetime") is not None:
-                new_event.start_datetime = item.get("start_datetime")
-                # if item.get("end_datetime") is not None:
-                new_event.end_datetime = item.get("end_datetime")
-                if item.get("all_day_event") is not None:
-                    new_event.all_day_event = item.get("all_day_event")
-                if item["program"].get("lookup_value_name") is not None:
-                    new_event.program = item["program"].get("lookup_value_name")
-                if item.get("office") is not None:
-                    if item["office"].get("office_name") is not None:
-                        new_event.office_name = item["office"].get("office_name")
-                    if item["office"].get("office_code") is not None:
-                        new_event.office_code = item["office"].get("office_code")
-                if item.get("external_id") is not None:
-                    new_event.external_id = item.get("external_id")
-
-                standard_key_list = standard_event_keys()
-                custom_fields = {
-                    key: value
-                    for key, value in item.items()
-                    if key not in standard_key_list
-                }
-                if custom_fields is not None:
-                    new_event.custom_fields = custom_fields
-                del custom_fields
+                new_event = event_list.appendObject(DAObject)
+                new_event = populate_event_data(event=new_event, event_data=item)
                 new_event.complete = True
 
     event_list.gathered = True
@@ -2696,6 +3077,165 @@ def populate_first_pro_bono_assignment(
                         user=legalserver_first_pro_bono_assignment, user_data=user_data
                     )
     return legalserver_first_pro_bono_assignment
+
+
+def populate_given_contact(
+    *,
+    legalserver_contact: Individual,
+    legalserver_contact_uuid: str,
+    legalserver_site: str = "",
+    contact_custom_fields: List | None = None,
+) -> Individual:
+    """
+    This is a keyword defined function that takes an Individual object and populates
+    it with the Contact data of the given LegalServer Contact.
+
+    Args:
+        legalserver_contact (Individual): Individual object that will be returned
+        legalserver_contact_uuid (str):
+        legalserver_site (str):
+        contact_custom_fields (list): Optional list of custom fields to gather on the Contact record
+
+    Returns:
+        The supplied Individual object.
+    """
+
+    contact_data = get_contact_details(
+        legalserver_site=legalserver_site,
+        legalserver_contact_uuid=legalserver_contact_uuid,
+        custom_fields=contact_custom_fields,
+    )
+    legalserver_contact = populate_contact_data(
+        contact=legalserver_contact, contact_data=contact_data
+    )
+    return legalserver_contact
+
+
+def populate_given_event(
+    *,
+    legalserver_event: DAObject,
+    legalserver_event_uuid: str,
+    legalserver_site: str = "",
+    event_custom_fields: List | None = None,
+) -> DAObject:
+    """
+    This is a keyword defined function that takes an DAObject object and populates
+    it with the event data of the given LegalServer event.
+
+    Args:
+        legalserver_event (DAObject): DAObject object that will be returned
+        legalserver_event_uuid (str):
+        legalserver_site (str):
+        event_custom_fields (list): Optional list of custom fields to gather on the Contact record
+
+    Returns:
+        The supplied DAObject object.
+    """
+
+    event_data = get_event_details(
+        legalserver_site=legalserver_site,
+        legalserver_event_uuid=legalserver_event_uuid,
+        custom_fields=event_custom_fields,
+    )
+    legalserver_event = populate_event_data(
+        event=legalserver_event, event_data=event_data
+    )
+    return legalserver_event
+
+
+def populate_given_organization(
+    *,
+    legalserver_organization: Person,
+    legalserver_organization_uuid: str,
+    legalserver_site: str = "",
+    organization_custom_fields: List | None = None,
+) -> Person:
+    """
+    This is a keyword defined function that takes an Person object and populates
+    it with the Organization data of a given LegalServer Organization.
+
+    Args:
+        legalserver_organization (Person): Person object that will be returned
+        legalserver_organization_uuid (str):
+        legalserver_site (str):
+        organization_custom_fields (list): Optional list of custom fields to
+            gather on the Organization record
+
+    Returns:
+        The supplied Person object.
+    """
+
+    organization_data = get_organization_details(
+        legalserver_site=legalserver_site,
+        legalserver_organization_uuid=legalserver_organization_uuid,
+        custom_fields=organization_custom_fields,
+    )
+    legalserver_organization = populate_organization_data(
+        organization=legalserver_organization, organization_data=organization_data
+    )
+    return legalserver_organization
+
+
+def populate_given_task(
+    *,
+    legalserver_task: DAObject,
+    legalserver_task_uuid: str,
+    legalserver_site: str = "",
+    task_custom_fields: List | None = None,
+) -> DAObject:
+    """
+    This is a keyword defined function that takes a DAObject object and populates
+    it with the Task data of the given LegalServer task.
+
+    Args:
+        legalserver_task (DAObject): DAObject object that will be returned
+        legalserver_task_uuid (str):
+        legalserver_site (str):
+        task_custom_fields (list): Optional list of custom fields to gather on the Task record
+
+    Returns:
+        The supplied DAObject object.
+    """
+
+    task_data = get_task_details(
+        legalserver_site=legalserver_site,
+        legalserver_task_uuid=legalserver_task_uuid,
+        custom_fields=task_custom_fields,
+    )
+    legalserver_task = populate_task_data(
+        legalserver_task=legalserver_task, task_data=task_data
+    )
+    return legalserver_task
+
+
+def populate_given_user(
+    *,
+    legalserver_user: Individual,
+    legalserver_user_uuid: str,
+    legalserver_site: str = "",
+    user_custom_fields: List | None = None,
+) -> Individual:
+    """
+    This is a keyword defined function that takes an Individual object and populates
+    it with the user data of a given LegalServer user .
+
+    Args:
+        legalserver_user (Individual): Individual object that will be returned
+        legalserver_user_uuid (str):
+        legalserver_site (str):
+        user_custom_fields (list): Optional list of custom fields to gather on the User record
+
+    Returns:
+        The supplied Individual object.
+    """
+
+    user_data = get_user_details(
+        legalserver_site=legalserver_site,
+        legalserver_user_uuid=legalserver_user_uuid,
+        custom_fields=user_custom_fields,
+    )
+    legalserver_user = populate_user_data(user=legalserver_user, user_data=user_data)
+    return legalserver_user
 
 
 def populate_income(
@@ -2971,6 +3511,113 @@ def populate_litigations(
     return litigation_list
 
 
+def populate_organization_data(
+    *, organization: Person, organization_data: Dict
+) -> Person:
+    """
+    This is a keyword defined function that takes a Person object and populates
+    it with the organization data of the relevant organization record.
+
+    Args:
+        organization (Person): Person object that will be returned
+        organization_data (Dict | None): dictionary of the organization data
+            from a LegalServer request
+
+    Returns:
+        The supplied Person object.
+    """
+    organization.id = organization_data.get("id")
+    organization.uuid = organization_data.get("uuid")
+    organization.initializeAttribute("name", IndividualName)
+    if organization_data.get("name") is not None:
+        organization.name.text = organization_data.get("name")
+
+    if organization_data.get("abbreviation") is not None:
+        organization.abbreviation = organization_data.get("abbreviation")
+    if organization_data.get("description") is not None:
+        organization.description = organization_data.get("description")
+    if organization_data.get("referral_contact_phone") is not None:
+        organization.referral_contact_phone = organization_data.get(
+            "referral_contact_phone"
+        )
+    if organization_data.get("referral_contact_email") is not None:
+        organization.referral_contact_email = organization_data.get(
+            "referral_contact_email"
+        )
+
+    if organization_data.get("active") is not None:
+        organization.active = organization_data.get("active")
+    if organization_data.get("is_master") is not None:
+        organization.is_master = organization_data.get("is_master")
+    if organization_data.get("website") is not None:
+        organization.website = organization_data.get("website")
+    if organization_data.get("date_org_entered") is not None:
+        organization.date_org_entered = organization_data.get("date_org_entered")
+    if organization_data.get("parent_organization") is not None:
+        organization.parent_organization = organization_data.get("parent_organization")
+
+    temp_list = []
+    for type in organization_data["types"]:
+        if type.get("lookup_value_name") is not None:
+            temp_list.append(type.get("lookup_value_name"))
+    if temp_list:
+        organization.types = temp_list
+    del temp_list
+
+    if organization_data.get("phone") is not None:
+        organization.phone_business = organization_data.get("phone")
+    if organization_data.get("fax") is not None:
+        organization.phone_fax = organization_data.get("fax")
+
+    if organization_data.get("external_site_uuids") is not None:
+        organization.external_site_uuids = organization_data.get("external_site_uuids")
+    organization.initializeAttribute("address", Address)
+    if (
+        organization_data.get("street") is not None
+        and organization_data.get("street_2") is not None
+        and organization_data.get("city") is not None
+        and organization_data.get("state") is not None
+        and organization_data.get("zip") is not None
+    ):
+
+        # Work Address
+        if organization_data.get("street") is not None:
+            organization.address.address = organization_data.get("street")
+        ## LS Supports both Apt Num and Street2
+        if organization_data.get("street_2") is not None:
+            organization.address.unit = organization_data.get("street_2")
+
+        if organization_data.get("city") is not None:
+            organization.address.city = organization_data.get("city")
+        if organization_data.get("state") is not None:
+            organization.address.state = organization_data.get("state")
+        if organization_data.get("zip") is not None:
+            organization.address.zip = organization_data.get("zip")
+
+    if organization_data.get("dynamic_process") is not None:
+        organization.dynamic_process_id = organization_data["dynamic_process"].get(
+            "dynamic_process_id"
+        )
+        organization.dynamic_process_uuid = organization_data["dynamic_process"].get(
+            "dynamic_process_uuid"
+        )
+        organization.dynamic_process_name = organization_data["dynamic_process"].get(
+            "dynamic_process_name"
+        )
+
+    standard_key_list = standard_organization_keys()
+    custom_fields = {
+        key: value
+        for key, value in organization_data.items()
+        if key not in standard_key_list
+    }
+    if custom_fields is not None:
+        organization.custom_fields = custom_fields
+    del custom_fields
+
+    return organization
+
+
 def populate_non_adverse_parties(
     *,
     non_adverse_party_list: DAList,
@@ -3016,7 +3663,7 @@ def populate_non_adverse_parties(
             new_nap.uuid = item.get("uuid")
             new_nap.id = item.get("id")
             if item.get("organization_name") is None:
-                new_nap.initializeAttribute("name", Individual)
+                new_nap.initializeAttribute("name", IndividualName)
                 if item.get("first") is not None:
                     new_nap.name.first = item.get("first")
                 if item.get("middle") is not None:
@@ -3026,7 +3673,8 @@ def populate_non_adverse_parties(
                 if item.get("suffix") is not None:
                     new_nap.name.suffix = item.get("suffix")
             else:
-                new_nap.name = item.get("organization_name")
+                new_nap.initializeAttribute("name", Name)
+                new_nap.name.text = item.get("organization_name")
             if item.get("date_of_birth") is not None:
                 new_nap.date_of_birth = item.get("date_of_birth")
             if item.get("approximate_dob") is not None:
@@ -3432,6 +4080,8 @@ def populate_services(
                     new_service.funding_code = item.get("funding_code")
                 if item.get("external_id") is not None:
                     new_service.external_id = item.get("external_id")
+                if item.get("uscis_receipt_number") is not None:
+                    new_service.uscis_receipt_number = item.get("uscis_receipt_number")
 
                 standard_key_list = standard_services_keys()
                 custom_fields = {
@@ -3447,6 +4097,116 @@ def populate_services(
 
     services_list.gathered = True
     return services_list
+
+
+def populate_task_data(
+    *,
+    legalserver_task: DAObject,
+    task_data: dict,
+) -> DAObject:
+    """Take the data from LegalServer about a given task and populate a given
+    DAObject with the data.
+
+    Args:
+        legalserver_task (DAObject):  DAObject to be returned.
+        task_data (dict): Dictionary of the task data from a
+            LegalServer request.
+
+    Returns:
+        A DAObject of a task record."""
+
+    legalserver_task.id = task_data.get("id")
+    legalserver_task.uuid = task_data.get("task_uuid")
+    if task_data.get("title") is not None:
+        legalserver_task.title = task_data.get("title")
+    if task_data.get("list_date") is not None:
+        legalserver_task.list_date = task_data.get("list_date")
+    if task_data.get("due_date") is not None:
+        legalserver_task.due_date = task_data.get("due_date")
+    if task_data.get("active") is not None:
+        legalserver_task.active = task_data.get("active")
+    if task_data.get("task_type") is not None:
+        if task_data["task_type"].get("lookup_value_name") is not None:
+            legalserver_task.task_type = task_data["task_type"].get("lookup_value_name")
+    if task_data.get("deadline_type") is not None:
+        if task_data["deadline_type"].get("lookup_value_name") is not None:
+            legalserver_task.deadline_type = task_data["deadline_type"].get(
+                "lookup_value_name"
+            )
+    if task_data.get("deadline") is not None:
+        legalserver_task.deadline = task_data.get("deadline")
+    if task_data.get("private") is not None:
+        legalserver_task.private = task_data.get("private")
+    if task_data.get("completed") is not None:
+        legalserver_task.completed = task_data.get("completed")
+    if task_data.get("completed_by") is not None:
+        if task_data["completed_by"].get("user_uuid") is not None:
+            legalserver_task.completed_by_uuid = task_data["completed_by"].get(
+                "user_uuid"
+            )
+        if task_data["completed_by"].get("user_name") is not None:
+            legalserver_task.completed_by_name = task_data["completed_by"].get(
+                "user_name"
+            )
+    if task_data.get("completed_date") is not None:
+        legalserver_task.completed_date = task_data.get("completed_date")
+
+    temp_list = []
+    for user in task_data["users"]:
+        if user.get("user_uuid") is not None:
+            temp_list.append(
+                {
+                    "user_uuid": user.get("user_uuid"),
+                    "user_name": user.get("user_name"),
+                }
+            )
+    if temp_list:
+        legalserver_task.users = temp_list
+    del temp_list
+
+    if task_data.get("dynamic_process") is not None:
+        if task_data["dynamic_process"].get("dynamic_process_id") is not None:
+            legalserver_task.dynamic_process_id = task_data["dynamic_process"].get(
+                "dynamic_process_id"
+            )
+        if task_data["dynamic_process"].get("dynamic_process_uuid") is not None:
+            legalserver_task.dynamic_process_uuid = task_data["dynamic_process"].get(
+                "dynamic_process_uuid"
+            )
+        if task_data["dynamic_process"].get("dynamic_process_name") is not None:
+            legalserver_task.dynamic_process_name = task_data["dynamic_process"].get(
+                "dynamic_process_name"
+            )
+    if task_data.get("is_this_a_case_alert") is not None:
+        legalserver_task.is_this_a_case_alert = task_data.get("is_this_a_case_alert")
+    if task_data.get("statute_of_limitations") is not None:
+        legalserver_task.statute_of_limitations = task_data.get(
+            "statute_of_limitations"
+        )
+    if task_data.get("created_date") is not None:
+        legalserver_task.created_date = task_data.get("created_date")
+    if task_data.get("created_by") is not None:
+        if task_data["created_by"].get("user_uuid") is not None:
+            legalserver_task.created_by_uuid = task_data["created_by"].get("user_uuid")
+        if task_data["created_by"].get("user_name") is not None:
+            legalserver_task.created_by_name = task_data["created_by"].get("user_name")
+    if task_data["program"].get("lookup_value_name") is not None:
+        legalserver_task.program = task_data["program"].get("lookup_value_name")
+    if task_data.get("office") is not None:
+        if task_data["office"].get("office_name") is not None:
+            legalserver_task.office_name = task_data["office"].get("office_name")
+        if task_data["office"].get("office_code") is not None:
+            legalserver_task.office_code = task_data["office"].get("office_code")
+
+    standard_key_list = standard_task_keys()
+    custom_fields = {
+        key: value for key, value in task_data.items() if key not in standard_key_list
+    }
+    if custom_fields is not None:
+        legalserver_task.custom_fields = custom_fields
+    del custom_fields
+
+    return legalserver_task
 
 
 def populate_tasks(
@@ -3474,7 +4234,7 @@ def populate_tasks(
             not provided.
 
     Returns:
-        A DAList of DAObjects with each being a separate income record."""
+        A DAList of DAObjects with each being a separate task record."""
 
     source = get_source_module_data(
         source_type="tasks",
@@ -3488,96 +4248,7 @@ def populate_tasks(
             if isinstance(item, dict):
                 # item: DAObject = item  # type annotation
                 new_task = task_list.appendObject()
-                new_task.id = item.get("id")
-                new_task.uuid = item.get("task_uuid")
-                if item.get("title") is not None:
-                    new_task.title = item.get("title")
-                if item.get("list_date") is not None:
-                    new_task.list_date = item.get("list_date")
-                if item.get("due_date") is not None:
-                    new_task.due_date = item.get("due_date")
-                if item.get("active") is not None:
-                    new_task.active = item.get("active")
-                if item.get("task_type") is not None:
-                    if item["task_type"].get("lookup_value_name") is not None:
-                        new_task.task_type = item["task_type"].get("lookup_value_name")
-                if item.get("deadline_type") is not None:
-                    if item["deadline_type"].get("lookup_value_name") is not None:
-                        new_task.deadline_type = item["deadline_type"].get(
-                            "lookup_value_name"
-                        )
-                if item.get("deadline") is not None:
-                    new_task.deadline = item.get("deadline")
-                if item.get("private") is not None:
-                    new_task.private = item.get("private")
-                if item.get("completed") is not None:
-                    new_task.completed = item.get("completed")
-                if item.get("completed_by") is not None:
-                    if item["completed_by"].get("user_uuid") is not None:
-                        new_task.completed_by_uuid = item["completed_by"].get(
-                            "user_uuid"
-                        )
-                    if item["completed_by"].get("user_name") is not None:
-                        new_task.completed_by_name = item["completed_by"].get(
-                            "user_name"
-                        )
-                if item.get("completed_date") is not None:
-                    new_task.completed_date = item.get("completed_date")
-
-                temp_list = []
-                for user in item["users"]:
-                    if user.get("user_uuid") is not None:
-                        temp_list.append(
-                            {
-                                "user_uuid": user.get("user_uuid"),
-                                "user_name": user.get("user_name"),
-                            }
-                        )
-                if temp_list:
-                    new_task.users = temp_list
-                del temp_list
-
-                if item.get("dynamic_process") is not None:
-                    if item["dynamic_process"].get("dynamic_process_id") is not None:
-                        new_task.dynamic_process_id = item["dynamic_process"].get(
-                            "dynamic_process_id"
-                        )
-                    if item["dynamic_process"].get("dynamic_process_uuid") is not None:
-                        new_task.dynamic_process_uuid = item["dynamic_process"].get(
-                            "dynamic_process_uuid"
-                        )
-                    if item["dynamic_process"].get("dynamic_process_name") is not None:
-                        new_task.dynamic_process_name = item["dynamic_process"].get(
-                            "dynamic_process_name"
-                        )
-                if item.get("is_this_a_case_alert") is not None:
-                    new_task.is_this_a_case_alert = item.get("is_this_a_case_alert")
-                if item.get("statute_of_limitations") is not None:
-                    new_task.statute_of_limitations = item.get("statute_of_limitations")
-                if item.get("created_date") is not None:
-                    new_task.created_date = item.get("created_date")
-                if item.get("created_by") is not None:
-                    if item["created_by"].get("user_uuid") is not None:
-                        new_task.created_by_uuid = item["created_by"].get("user_uuid")
-                    if item["created_by"].get("user_name") is not None:
-                        new_task.created_by_name = item["created_by"].get("user_name")
-                if item["program"].get("lookup_value_name") is not None:
-                    new_task.program = item["program"].get("lookup_value_name")
-                if item.get("office") is not None:
-                    if item["office"].get("office_name") is not None:
-                        new_task.office_name = item["office"].get("office_name")
-                    if item["office"].get("office_code") is not None:
-                        new_task.office_code = item["office"].get("office_code")
-
-                standard_key_list = standard_task_keys()
-                custom_fields = {
-                    key: value
-                    for key, value in item.items()
-                    if key not in standard_key_list
-                }
-                if custom_fields is not None:
-                    new_task.custom_fields = custom_fields
-                del custom_fields
+                new_task = populate_task_data(legalserver_task=new_task, task_data=item)
                 new_task.complete = True
 
     task_list.gathered = True
@@ -3755,11 +4426,18 @@ def populate_user_data(*, user: Individual, user_data: Dict) -> Individual:
         user.address_mailing = user_data.get("address_mailing")
 
     temp_list = []
-    for type in user_data["types"]:
+    for type in user_data["contractor_assignment_types"]:
         if type.get("lookup_value_name") is not None:
             temp_list.append(type.get("lookup_value_name"))
     if temp_list:
-        user.types = temp_list
+        user.contractor_assignment_types = temp_list
+    del temp_list
+
+    temp_list = []
+    for affiliation in user_data["organization_affiliations"]:
+        temp_list.append(affiliation)
+    if temp_list:
+        user.organization_affiliations = temp_list
     del temp_list
 
     # Work Address
@@ -4037,13 +4715,15 @@ def search_contact_data(
         dictionary response includes a key of 'error'
     """
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/contacts"
     if not contact_search_params:
         contact_search_params = {}
     if custom_fields:
-        contact_search_params["custom_fields"] = custom_fields
+        if has_valid_items(custom_fields):
+            contact_search_params["custom_fields"] = format_field_list(custom_fields)
+
     if sort == "asc":
         contact_search_params["sort"] = "asc"
     elif sort == "desc":
@@ -4091,7 +4771,7 @@ def search_document_data(
     """
 
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/documents"
     if not document_search_params:
@@ -4149,7 +4829,7 @@ def search_event_data(
         dictionary response includes a key of 'error'
     """
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/events"
     if not event_search_params:
@@ -4157,7 +4837,9 @@ def search_event_data(
     if legalserver_matter_uuid:
         event_search_params["matters"] = legalserver_matter_uuid
     if custom_fields:
-        event_search_params["custom_fields"] = custom_fields
+        if has_valid_items(custom_fields):
+            event_search_params["custom_fields"] = format_field_list(custom_fields)
+
     if sort == "asc":
         event_search_params["sort"] = "asc"
     elif sort == "desc":
@@ -4201,7 +4883,7 @@ def search_matter_additional_names(
     Returns:
         A list of dictionaries with the additional names data."""
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/matters/{legalserver_matter_uuid}/additional_names"
 
@@ -4249,7 +4931,7 @@ def search_matter_adverse_parties(
     Returns:
         A list of dictionaries with the Adverse Parties data."""
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/matters/{legalserver_matter_uuid}/adverse_parties"
 
@@ -4298,7 +4980,7 @@ def search_matter_assignments_data(
     Returns:
         A list of dictionaries with the assignment data."""
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/matters/{legalserver_matter_uuid}/assignments"
 
@@ -4348,13 +5030,15 @@ def search_matter_charges_data(
     Returns:
         A list of dictionaries with the charges data."""
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/matters/{legalserver_matter_uuid}/charges"
     if not charges_search_params:
         charges_search_params = {}
     if custom_fields:
-        charges_search_params["custom_fields"] = custom_fields
+        if has_valid_items(custom_fields):
+            charges_search_params["custom_fields"] = format_field_list(custom_fields)
+
     if sort == "asc":
         charges_search_params["sort"] = "asc"
     elif sort == "desc":
@@ -4398,7 +5082,7 @@ def search_matter_contacts_data(
     Returns:
         A list of dictionaries with the contacts data."""
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/matters/{legalserver_matter_uuid}/contacts"
     if not matter_contact_search_params:
@@ -4447,7 +5131,7 @@ def search_matter_income_data(
     Returns:
         A list of dictionaries with the income data."""
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/matters/{legalserver_matter_uuid}/incomes"
 
@@ -4501,14 +5185,16 @@ def search_matter_litigation_data(
     Returns:
         A list of dictionaries with the litigation data."""
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/matters/{legalserver_matter_uuid}/litigations"
 
     if not litigation_search_params:
         litigation_search_params = {}
     if custom_fields:
-        litigation_search_params["custom_fields"] = custom_fields
+        if has_valid_items(custom_fields):
+            litigation_search_params["custom_fields"] = format_field_list(custom_fields)
+
     if sort == "asc":
         litigation_search_params["sort"] = "asc"
     elif sort == "desc":
@@ -4553,7 +5239,7 @@ def search_matter_notes_data(
     Returns:
         A list of dictionaries with the notes data."""
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/matters/{legalserver_matter_uuid}/notes"
 
@@ -4603,7 +5289,7 @@ def search_matter_non_adverse_parties(
     Returns:
         A list of dictionaries with the Adverse Parties data."""
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/matters/{legalserver_matter_uuid}/non_adverse_parties"
 
@@ -4653,13 +5339,15 @@ def search_matter_services_data(
     Returns:
         A list of dictionaries with the services data."""
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/matters/{legalserver_matter_uuid}/services"
     if not services_search_params:
         services_search_params = {}
     if custom_fields:
-        services_search_params["custom_fields"] = custom_fields
+        if has_valid_items(custom_fields):
+            services_search_params["custom_fields"] = format_field_list(custom_fields)
+
     if sort == "asc":
         services_search_params["sort"] = "asc"
     elif sort == "desc":
@@ -4711,7 +5399,7 @@ def search_task_data(
         dictionary response includes a key of 'error'
     """
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/tasks"
     if not task_search_params:
@@ -4719,7 +5407,9 @@ def search_task_data(
     if legalserver_matter_uuid:
         task_search_params["matters"] = legalserver_matter_uuid
     if custom_fields:
-        task_search_params["custom_fields"] = custom_fields
+        if has_valid_items(custom_fields):
+            task_search_params["custom_fields"] = format_field_list(custom_fields)
+
     if sort == "asc":
         task_search_params["sort"] = "asc"
     elif sort == "desc":
@@ -4767,13 +5457,15 @@ def search_user_data(
         dictionary response includes a key of 'error'
     """
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/users"
     if not user_search_params:
         user_search_params = {}
     if custom_fields:
-        user_search_params["custom_fields"] = custom_fields
+        if has_valid_items(custom_fields):
+            user_search_params["custom_fields"] = format_field_list(custom_fields)
+
     if sort == "asc":
         user_search_params["sort"] = "asc"
     elif sort == "desc":
@@ -4819,12 +5511,16 @@ def search_organization_data(
 
     """
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
     if not organization_search_params:
         organization_search_params = {}
     url = f"https://{legalserver_site}.legalserver.org/api/v2/organizations"
     if custom_fields:
-        organization_search_params["custom_fields"] = custom_fields
+        if has_valid_items(custom_fields):
+            organization_search_params["custom_fields"] = format_field_list(
+                custom_fields
+            )
+
     if sort == "asc":
         organization_search_params["sort"] = "asc"
     elif sort == "desc":
@@ -4858,9 +5554,9 @@ def search_user_organization_affiliation(
         legalserver_user_uuid (str): required
 
     Returns:
-        A list of dictionaries with the Adverse Parties data."""
+        A list of dictionaries with the user Organization Affiliation data."""
     header_content = get_legalserver_token(legalserver_site=legalserver_site)
-    header_content["Content-Type"] = "application/json"
+    header_content["Accept"] = "application/json"
 
     url = f"https://{legalserver_site}.legalserver.org/api/v2/users/{legalserver_user_uuid}/organization_affiliation"
 
@@ -4969,6 +5665,7 @@ def standard_charges_keys() -> List[str]:
         "dynamic_process",
         "charge_uuid",
         "external_id",
+        "charge_name",
     ]
     return standard_charges_keys
 
@@ -5048,6 +5745,10 @@ def standard_contact_keys() -> List[str]:
         "user_profile_exists",
         "user_uuid",
         "dynamic_process",
+        "contact_uuid",
+        "case_contact_uuid",
+        "contact_types",
+        "case_contact_type",
     ]
     return standard_contact_keys
 
@@ -5349,6 +6050,17 @@ def standard_matter_keys() -> List[str]:
         "preferred_spoken_language",
         "preferred_written_language",
         "contractor_work_orders",
+        "trial_date",
+        "date_of_appointment_retention",
+        "country_of_origin",
+        "dob_status",
+        "ssn_status",
+        "court_tracking_numbers",
+        "api_integration_preference",
+        "sharepoint_tracer_document_id",
+        "google_drive_folder_id",
+        "dropbox_folder_id",
+        "military_status",
     ]
     return standard_matter_keys
 
@@ -5476,6 +6188,8 @@ def standard_organization_keys() -> List[str]:
         "external_unique_id",
         "parent_organization",
         "dynamic_process",
+        "documents",
+        "zip",
     ]
     return standard_organization_keys
 
@@ -5509,6 +6223,7 @@ def standard_services_keys() -> List[str]:
         "charges",
         "matter_id",
         "external_id",
+        "uscis_receipt_number",
     ]
     return standard_services_keys
 
@@ -5621,5 +6336,7 @@ def standard_user_keys() -> List[str]:
         "title",
         "vendor_id",
         "contractor_doing_business_as",
+        "organization_affiliations",
+        "contractor_assignment_types",
     ]
     return standard_user_keys

@@ -41,11 +41,44 @@ Format:
 ### Security
 - 
 -->
+## [1.2.1]
+
+### Added
+
+* `sample_file_download` interview that will download all of the files from a
+LegalServer case as a zip file.
+* `get_document` function to download a document from LegalServer to Docassemble.
+
+### Changed
+
+* Clarified documentation regarding the `interview` list provided from
+Docassemble to LegalServer.
+* Added string defaults for document DAObject items retrieved via
+`populate_documents`
+
+## [1.2.0]
+
+### Added
+
+* Additional Test for unhandled fields.
+* New Matter, Service, and Charge parameters.
+* Refactored Event, Task, User population functions.
+
+### Changed
+
+* Organizations and Adverse Parties will now use a `Name` object when
+representing an organization.
+
+### Fixed
+
+* Removed `Content-Type` header for GET requests to LegalServer.
+* Better handling of empty lists for custom fields.
+
 ## [1.1.2]
 
 ### Added
 
-* Recent new matter parameters. 
+* Recent new matter parameters.
 
 ### Changed
 
@@ -124,107 +157,3 @@ custom fields.
 ### Added
 
 * Initial Release
-
-## [0.0.15]
-
-### Fixed
-
-* Resolved todos regarding tasks populating records properly.
-
-## [0.0.14]
-
-### Added
-
-* Added function to retrive a LegalServer Report API request and return it as a
-python dictionary. Unit tests included for either XML or JSON reports. This
-required specifying the `lxml` dependency.
-
-## [0.0.13]
-
-### Changed
-
-* Changed the upload a file function to return the entire LegalServer response
-as a dictionary instead of just the uuid as a string. Updated tests accordingly.
-
-## [0.0.12]
-
-### Added
-
-* Check for Pro Bono Users before trying to populate them.
-
-## [0.0.11]
-
-### Added
-
-* Object for the current LegalServer user, i.e., the user who initiated the
-Docassemble interview.
-* Objects for Tasks and Non-Adverse Parties.
-* Refactor for `legalserver_site_type` as a variable from LegalServer
-* Better error handling for API call errors.
-
-## [0.0.10]
-
-### Added
-
-* Objects for current Primary Assignment, First Pro Bono Assignment, Latest
-Pro Bono Assignment, and all Pro Bono Assignments.
-
-## [0.0.9]
-
-### Changed
-
-* Get filepath's filename if needed when posting a document to LegalServer.
-* Enabled Black formatter
-
-## [0.0.8]
-
-### Added
-
-* Explicit Docassemble dependency
-* Functions for Adverse Parties
-* Specific Role Privilege for the custom endpoint
-* Initial draft of Python unit tests
-
-## [0.0.7]
-
-### Added
-
-* Function to check if an API key exists for the given site.
-* Human readable error if the key doesn't exist.
-* Test to populate variables
-
-## [0.0.6]
-
-### Changed
-
-* Updated for new `v2` lookup elements
-
-## [0.0.5]
-
-### Added
-
-* added python modules to populate most tables
-
-## [0.0.4]
-
-### Changed
-
-* Updated for `michael.test`
-
-## [0.0.3]
-
-### Added
-
-* Added delete parameter to the retrieve stashed data function
-
-## [0.0.2]
-
-### Added
-
-* Added inital block to retrieve stashed data
-
-## [0.0.1]
-
-### Added
-
-* Successful POC passing file to the Documate endpoint

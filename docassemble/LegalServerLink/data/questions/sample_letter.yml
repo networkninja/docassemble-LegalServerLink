@@ -8,7 +8,7 @@ metadata:
     A sample letter/email feature
   authors:
     - organization: LegalServer
-  revision_date: 2023-10-11
+  revision_date: 2024-02-11
   require login: True
 ---
 features:

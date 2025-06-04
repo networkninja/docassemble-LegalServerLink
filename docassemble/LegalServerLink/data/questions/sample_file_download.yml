@@ -1,0 +1,116 @@
+---
+metadata:
+  title: |
+    Sample Case File Download
+  short title: |
+    Files
+  description: |
+    A sample case file download feature
+  authors:
+    - organization: LegalServer
+  revision_date: 2024-06-18
+  require login: True
+---
+comment: |
+  "legalserver_matter_uuid": "8b136b5e-d2db-11ec-ac03-0e5f2f9a47a5",
+---
+features:
+  use catchall: True
+  temporary session: true
+comment: |
+  Catchall features are enabled here just to check if you end up using a
+  variable in your template that is not defined by the data stash transfer from
+  LegalServer.
+
+  This way, the question will not result in an error, but a basic Catch All
+  question for that missing variable.
+
+  Temporary Session means that Docassemble will delete any existing sessions
+  that the user already has and start a new session.
+---
+include:
+  - LSLink.yml
+---
+objects:
+  - file_list: DAFileList.using(auto_gather=False, gathered=True)
+---
+mandatory: True
+code: |
+  checked_for_stashed_data
+  set_legalserver_site
+  # If you need everything, you can call `parse_all_legalserver_data`
+  # This is a little faster since it doesn't get extra records:
+  raise_errors_getting_legalserver_data
+  parse_legalserver_case_data
+  parse_legalserver_document_data
+  ready_to_download
+  confirm_documents
+  collect_documents
+  final_documents
+---
+question: |
+  Are you ready to download the documents?
+yesno: ready_to_download
+---
+code: |
+  file_count = 0
+  file_success_count = 0
+  for item in legalserver_documents:
+    file_count += 1
+    temp_document, temp_document_present = get_document(legalserver_site=legalserver_site, document_uuid=getattr(item, 'uuid'), document_name=getattr(item, 'name'))
+    if temp_document_present:
+      file_list.append(temp_document)
+      file_success_count += 1
+  collect_documents = True
+---
+code: |
+  zip_file_name = legalserver_case.case_number + "_documents.zip"
+---
+code: |
+  disk_file_size = 0
+  for item in legalserver_documents:
+    disk_file_size += getattr(item, 'disk_file_size', 0)
+---
+id: Document Table
+question: |
+  ${ legalserver_case.case_number } Documents
+subquestion: |
+  ${ legalserver_documents.table }
+
+  Total Size: ${ human_readable_size(disk_file_size) }
+continue button field: confirm_documents
+---
+table: legalserver_documents.table
+rows: legalserver_documents
+columns:
+  - Name: |
+      row_item.name
+  - Extension: |
+      row_item.mime_type
+  - Size: |
+      row_item.disk_file_size
+delete buttons: True
+---
+code: |
+  collect_documents
+  file_list.gathered = True
+---
+question: |
+  Final Documents
+subquestion: |
+  Total Documents checked: ${ file_count }
+
+  Total Documents Downloaded: ${ file_success_count }
+
+  Case Zip File: ${ case_zip }
+event: final_documents
+buttons:
+  - Exit: exit
+  - Restart: restart
+---
+code: |
+  for file in file_list:
+    file.retrieve()
+  case_zip = zip_file(file_list, filename=zip_file_name)
+---
+
