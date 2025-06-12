@@ -1,6 +1,6 @@
 import os
 import sys
-from setuptools import setup, find_packages
+from setuptools import setup, find_packages, find_namespace_packages
 from fnmatch import fnmatchcase
 from distutils.util import convert_path
 
@@ -58,7 +58,7 @@ def find_package_data(
 
 setup(
     name="docassemble.LegalServerLink",
-    version="1.2.1",
+    version="1.2.2",
     description=("A docassemble extension linking LegalServer and Docassemble."),
     long_description="# LegalServer and Docassemble Link",
     long_description_content_type="text/markdown",
@@ -66,7 +66,7 @@ setup(
     author_email="support@legalserver.org",
     license="The MIT License (MIT)",
     url="https://docassemble.org",
-    packages=find_packages(),
+    packages=find_namespace_packages(),
     namespace_packages=["docassemble"],
     install_requires=[
         "requests>=2.31.0",

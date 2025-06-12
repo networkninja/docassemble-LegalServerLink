@@ -114,6 +114,18 @@ legalserver:
   interviews:
 ```
 
+For example, the following configuration will return just one interview and will
+only be available on the integrations LegalServer site. 
+
+```(YAML)
+legalserver:
+  interviews:
+  - interview: docassemble.LegalServerLink:data/questions/LSLink.yml
+    name: LegalServer Docassemble Link
+    sites:
+      - integrations
+```
+
 To use this endpoint, you need to have the `legalserver` user role privilege in
 Docassemble. This can be established by going to your [User List](https://docassemble.org/docs/admin.html#user%20list),
 selecting `Edit Privileges`, and adding `legalserver` to the list. Then you

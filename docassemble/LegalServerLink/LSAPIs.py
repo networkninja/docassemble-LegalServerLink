@@ -3,7 +3,7 @@ import pycountry
 import json
 import defusedxml.ElementTree as etree
 from datetime import date
-import docassemble.base.functions
+from docassemble.base.functions import get_config, defined
 from docassemble.base.util import (
     log,
     Address,
@@ -24,7 +24,7 @@ from typing import List, Dict, Union, Optional, Any
 import os.path
 from os import listdir
 import re
-from typing import Union
+from typing import Dict, List, Union, Optional, Any
 
 __all__ = [
     "check_custom_fields",
@@ -146,9 +146,10 @@ def check_legalserver_token(*, legalserver_site: str) -> Dict:
         Dictionary. Key named error is included if there is an error. Otherwise a
             key named no_error is included. The key contains the details for the error.
     """
-    apikey = docassemble.base.functions.get_config("legalserver").get(
-        legalserver_site.lower()
-    )
+    config = get_config("legalserver")
+    if not config:
+        return {"error": "No LegalServer API credentials found in configuration."}
+    apikey = config.get(legalserver_site.lower())
     if apikey is None:
         return {"error": "site not included in configuration"}
     elif apikey.get("bearer") is None:
@@ -629,6 +630,54 @@ def get_user_details(
     return return_data
 
 
+def element_to_dict(element) -> Union[Dict[str, Any], Optional[str]]:
+    """
+    Recursively converts an XML element to a Python dictionary.
+
+    This function translates an XML element structure into a nested dictionary
+    representation,preserving the hierarchical structure of the XML. It handles
+    elements with text content, child elements, and repeated elements by
+    converting them to lists.
+
+    Args:
+        element: An XML element object (typically from ElementTree)
+
+    Returns:
+        dict or str: If the element has children, returns a dictionary where
+            keys are child tag names and values are either dictionaries (for
+            single child elements), lists of dictionaries (for repeated child
+            elements), or strings (for text content). If the element has no
+            children, returns the element's text content.
+
+    Example:
+        For XML like:
+        <parent>
+            <child>text1</child>
+            <child>text2</child>
+            <other>value</other>
+        </parent>
+
+        Returns:
+        {
+            'child': ['text1', 'text2'],
+            'other': 'value'
+        }
+    """
+    if len(element) == 0:
+        return element.text
+    result: Dict[str, Any] = {}
+    for child in element:
+        child_data: Union[Dict[str, Any], Optional[str]] = element_to_dict(child)
+        if child.tag in result:
+            if isinstance(result[child.tag], list):
+                result[child.tag].append(child_data)
+            else:
+                result[child.tag] = [result[child.tag], child_data]
+        else:
+            result[child.tag] = child_data
+    return result
+
+
 def get_legalserver_report_data(
     *,
     legalserver_site: str,
@@ -671,7 +720,7 @@ def get_legalserver_report_data(
     report_params["display_hidden_columns"] = display_hidden_columns
 
     report_api_key = (
-        docassemble.base.functions.get_config("legalserver")
+        get_config("legalserver")
         .get(legalserver_site)
         .get("report " + str(report_number))
     )
@@ -694,25 +743,15 @@ def get_legalserver_report_data(
 
             xml_data = etree.fromstring(response.text)  # type: ignore
 
-            # Create a function to recursively convert an ElementTree into a dictionary
-            def element_to_dict(element):
-                if len(element) == 0:
-                    return element.text
-                result = {}
-                for child in element:
-                    child_data = element_to_dict(child)
-                    if child.tag in result:
-                        if isinstance(result[child.tag], list):
-                            result[child.tag].append(child_data)
-                        else:
-                            result[child.tag] = [result[child.tag], child_data]
-                    else:
-                        result[child.tag] = child_data
-                return result
-
             if xml_data is not None:
                 # Use the xml_to_dict function to recursively convert XML to a dictionary
-                dict_response = element_to_dict(xml_data)
+                xml_dict_result = element_to_dict(xml_data)
+                if isinstance(xml_dict_result, dict):
+                    dict_response = xml_dict_result
+                else:
+                    dict_response = {
+                        "error": "XML conversion did not result in a dictionary"
+                    }
 
         elif "application/json" in content_type:
             # The response is already JSON
@@ -816,9 +855,10 @@ def get_legalserver_token(*, legalserver_site: str) -> Dict[str, str]:
     Raises:
         Exception: if either there are no API credentials or the API Credentials have expired.
     """
-    apikey = docassemble.base.functions.get_config("legalserver").get(
-        legalserver_site.lower()
-    )
+    config = get_config("legalserver")
+    if not config:
+        raise Exception("No LegalServer API credentials found in configuration.")
+    apikey = config.get(legalserver_site.lower())
     if apikey is None:
         raise Exception(f"No API Credentials for {legalserver_site}")
     elif apikey.get("bearer") is None:
@@ -1200,7 +1240,7 @@ def populate_additional_names(
                 new_name.first = item.get("first")
             if item.get("middle") is not None:
                 new_name.middle = item.get("middle")
-            if item.get("type") is not None:
+            if item.get("type") is not None and isinstance(item["type"], dict):
                 if item["type"].get("lookup_value_name") is not None:
                     new_name.type = item["type"].get("lookup_value_name")
             if item.get("last") is not None:
@@ -1271,7 +1311,9 @@ def populate_adverse_parties(
             else:
                 new_ap.initializeAttribute("name", Name)
                 new_ap.name.text = item.get("organization_name")
-            if item.get("business_type") is not None:
+            if item.get("business_type") is not None and isinstance(
+                item.get("business_type"), dict
+            ):
                 if item.get("business_type").get("lookup_value_name") is not None:
                     new_ap.business_type = item["business_type"].get(
                         "lookup_value_name"
@@ -1280,12 +1322,16 @@ def populate_adverse_parties(
                 new_ap.date_of_birth = item.get("date_of_birth")
             if item.get("approximate_dob") is not None:
                 new_ap.approximate_dob = item.get("approximate_dob")
-            if item.get("relationship_type") is not None:
+            if item.get("relationship_type") is not None and isinstance(
+                item.get("relationship_type"), dict
+            ):
                 if item["relationship_type"].get("lookup_value_name") is not None:
                     new_ap.relationship_type = item["relationship_type"].get(
                         "lookup_value_name"
                     )
-            if item.get("language") is not None:
+            if item.get("language") is not None and isinstance(
+                item.get("language"), dict
+            ):
                 if item["language"].get("lookup_value_name") is not None:
                     new_ap.language_name = item["language"].get("lookup_value_name")
                     if (
@@ -1305,24 +1351,28 @@ def populate_adverse_parties(
                 new_ap.eye_color = item.get("eye_color")
             if item.get("hair_color") is not None:
                 new_ap.hair_color = item.get("hair_color")
-            if item.get("race") is not None:
+            if item.get("race") is not None and isinstance(item.get("race"), dict):
                 if item["race"].get("lookup_value_name") is not None:
                     new_ap.race = item["race"].get("lookup_value_name")
             if item.get("drivers_license") is not None:
                 new_ap.drivers_license = item.get("drivers_license")
             if item.get("visa_number") is not None:
                 new_ap.visa_number = item.get("visa_number")
-            if item.get("immigration_status") is not None:
+            if item.get("immigration_status") is not None and isinstance(
+                item.get("immigration_status"), dict
+            ):
                 if item["immigration_status"].get("lookup_value_name") is not None:
                     new_ap.immigration_status = item["immigration_status"].get(
                         "lookup_value_name"
                     )
-            if item.get("marital_status") is not None:
+            if item.get("marital_status") is not None and isinstance(
+                item.get("marital_status"), dict
+            ):
                 if item["marital_status"].get("lookup_value_name") is not None:
                     new_ap.marital_status = item["marital_status"].get(
                         "lookup_value_name"
                     )
-            if item.get("gender") is not None:
+            if item.get("gender") is not None and isinstance(item.get("gender"), dict):
                 if item["gender"].get("lookup_value_name") is not None:
                     new_ap.gender = item["gender"].get("lookup_value_name")
             if item.get("ssn") is not None:
@@ -1345,7 +1395,7 @@ def populate_adverse_parties(
                 new_ap.address.state = item.get("state")
             if item.get("zip_code") is not None:
                 new_ap.address.zip = item.get("zip_code")
-            if item.get("county") is not None:
+            if item.get("county") is not None and isinstance(item.get("county"), dict):
                 if item["county"].get("lookup_value_name") is not None:
                     new_ap.address.county = item["county"].get("lookup_value_name")
                     new_ap.address.county_uuid = item["county"].get("lookup_value_uuid")
@@ -1388,8 +1438,11 @@ def populate_adverse_parties(
                 for key, value in item.items()
                 if key not in standard_key_list
             }
+
             if custom_fields is not None:
                 new_ap.custom_fields = custom_fields
+            else:
+                new_ap.custom_fields = {}
             del custom_fields
 
             new_ap.complete = True
@@ -1439,16 +1492,22 @@ def populate_assignments(
             if isinstance(item, dict):
                 # item: DAObject = item  # type annotation
                 new_assignment = assignment_list.appendObject()
+                # these fields are all required by the application so will never
+                # be null or not present.
                 new_assignment.uuid = item.get("uuid")
                 new_assignment.id = item.get("id")
                 new_assignment.type = item["type"].get("lookup_value_name")
                 new_assignment.start_date = item.get("start_date")
                 new_assignment.end_date = item.get("end_date")
+                new_assignment.program = item["program"].get("lookup_value_name")
+                new_assignment.user_uuid = item["user"].get("user_uuid")
+                new_assignment.user_name = item["user"].get("user_name")
+
+                # these fields could be null or not present, so we check
                 if item.get("date_requested") is not None:
                     new_assignment.date_requested = item.get("date_requested")
                 if item.get("confirmed") is not None:
                     new_assignment.confirmed = item.get("confirmed")
-                new_assignment.program = item["program"].get("lookup_value_name")
                 if item.get("notes") is not None:
                     new_assignment.notes = item.get("notes")
                 if item.get("created_at") is not None:
@@ -1457,13 +1516,11 @@ def populate_assignments(
                     new_assignment.satisfies_outreach_training_credit = item.get(
                         "satisfies_outreach_training_credit"
                     )
-                if item.get("office") is not None:
+                if item.get("office") is not None and isinstance(item["office"], dict):
                     if item["office"].get("office_name") is not None:
                         new_assignment.office_name = item["office"].get("office_name")
                     if item["office"].get("office_code") is not None:
                         new_assignment.office_code = item["office"].get("office_code")
-                new_assignment.user_uuid = item["user"].get("user_uuid")
-                new_assignment.user_name = item["user"].get("user_name")
                 if item.get("assigned_by") is not None:
                     if item["assigned_by"].get("user_uuid") is not None:
                         new_assignment.assigned_by_uuid = item["assigned_by"].get(
@@ -1556,7 +1613,9 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
     case.is_group = legalserver_data.get("is_group")
     case.email = legalserver_data.get("case_email_address")
     case.rejected = legalserver_data.get("rejected")
-    if legalserver_data.get("dynamic_process") is not None:
+    if legalserver_data.get("dynamic_process") is not None and isinstance(
+        legalserver_data["dynamic_process"], dict
+    ):
         if legalserver_data["dynamic_process"].get("dynamic_process_id") is not None:
             case.dynamic_process_id = legalserver_data["dynamic_process"].get(
                 "dynamic_process_id"
@@ -1576,7 +1635,9 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
         case.cause_number = legalserver_data.get("cause_number")
     if legalserver_data.get("case_title") is not None:
         case.case_title = legalserver_data.get("case_title")
-    if legalserver_data.get("prescreen_user") is not None:
+    if legalserver_data.get("prescreen_user") is not None and isinstance(
+        legalserver_data.get("prescreen_user"), dict
+    ):
         if legalserver_data["prescreen_user"].get("user_uuid") is not None:
             case.prescreen_user_uuid = legalserver_data["prescreen_user"].get(
                 "user_uuid"
@@ -1585,12 +1646,16 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
             case.prescreen_user_name = legalserver_data["prescreen_user"].get(
                 "user_name"
             )
-    if legalserver_data.get("prescreen_program") is not None:
+    if legalserver_data.get("prescreen_program") is not None and isinstance(
+        legalserver_data.get("prescreen_program"), dict
+    ):
         if legalserver_data["prescreen_program"].get("lookup_value_name") is not None:
             case.prescreen_program = legalserver_data["prescreen_program"].get(
                 "lookup_value_name"
             )
-    if legalserver_data.get("prescreen_office") is not None:
+    if legalserver_data.get("prescreen_office") is not None and isinstance(
+        legalserver_data["prescreen_office"], dict
+    ):
         if legalserver_data.get("prescreen_office") is not None:
             if legalserver_data["prescreen_office"].get("office_code") is not None:
                 case.prescreen_office_code = legalserver_data["prescreen_office"].get(
@@ -1600,27 +1665,36 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
             case.prescreen_office_name = legalserver_data["prescreen_office"].get(
                 "office_name"
             )
-    if legalserver_data.get("intake_user") is not None:
+    if legalserver_data.get("intake_user") is not None and isinstance(
+        legalserver_data.get("intake_user"), dict
+    ):
         if legalserver_data["intake_user"].get("user_uuid") is not None:
             case.intake_user_uuid = legalserver_data["intake_user"].get("user_uuid")
         if legalserver_data["intake_user"].get("user_name") is not None:
             case.intake_user_name = legalserver_data["intake_user"].get("user_name")
-    if legalserver_data["intake_program"].get("lookup_value_name") is not None:
+    if legalserver_data["intake_program"].get(
+        "lookup_value_name"
+    ) is not None and isinstance(legalserver_data.get("intake_program"), dict):
         case.intake_program = legalserver_data["intake_program"].get(
             "lookup_value_name"
         )
-    if legalserver_data.get("intake_office") is not None:
+    if legalserver_data.get("intake_office") is not None and isinstance(
+        legalserver_data["intake_office"], dict
+    ):
         if legalserver_data["intake_office"].get("office_code") is not None:
             case.intake_office_code = legalserver_data["intake_office"].get(
                 "office_code"
             )
-        if legalserver_data["intake_office"].get("office_name") is not None:
+        if legalserver_data["intake_office"].get(
+            "office_name"
+        ) is not None and isinstance(legalserver_data["intake_office"], dict):
             case.intake_office_name = legalserver_data["intake_office"].get(
                 "office_name"
             )
-    if (
-        legalserver_data["prescreen_screening_status"].get("lookup_value_name")
-        is not None
+    if legalserver_data["prescreen_screening_status"].get(
+        "lookup_value_name"
+    ) is not None and isinstance(
+        legalserver_data.get("prescreen_screening_status"), dict
     ):
         case.prescreen_screening_status = legalserver_data[
             "prescreen_screening_status"
@@ -1633,7 +1707,9 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
         case.intake_date = legalserver_data.get("intake_date")
     if legalserver_data.get("date_rejected") is not None:
         case.date_rejected = legalserver_data.get("date_rejected")
-    if legalserver_data.get("county_of_dispute") is not None:
+    if legalserver_data.get("county_of_dispute") is not None and isinstance(
+        legalserver_data["county_of_dispute"], dict
+    ):
         if legalserver_data["county_of_dispute"].get("lookup_value_name") is not None:
             case.county_of_dispute_name = legalserver_data["county_of_dispute"].get(
                 "lookup_value_name"
@@ -1646,41 +1722,63 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
             case.county_of_dispute_FIPS = legalserver_data["county_of_dispute"].get(
                 "lookup_value_FIPS"
             )
-    if legalserver_data["legal_problem_code"].get("lookup_value_name") is not None:
+    if legalserver_data["legal_problem_code"].get(
+        "lookup_value_name"
+    ) is not None and isinstance(legalserver_data["legal_problem_code"], dict):
         case.legal_problem_code = legalserver_data["legal_problem_code"].get(
             "lookup_value_name"
         )
-    if legalserver_data["legal_problem_category"].get("lookup_value_name") is not None:
+    if legalserver_data["legal_problem_category"].get(
+        "lookup_value_name"
+    ) is not None and isinstance(legalserver_data["legal_problem_category"], dict):
         case.legal_problem_category = legalserver_data["legal_problem_category"].get(
             "lookup_value_name"
         )
-    temp_list = []
-    for slpc in legalserver_data["special_legal_problem_code"]:
-        if slpc.get("lookup_value_name") is not None:
-            temp_list.append(slpc.get("lookup_value_name"))
-    if temp_list:
-        case.special_legal_problem_code = temp_list
-    del temp_list
-    if legalserver_data["intake_type"].get("lookup_value_name") is not None:
+    if legalserver_data.get("special_legal_problem_code") is not None and isinstance(
+        legalserver_data["special_legal_problem_code"], list
+    ):
+        temp_list = []
+        for slpc in legalserver_data["special_legal_problem_code"]:
+            if slpc.get("lookup_value_name") is not None:
+                temp_list.append(slpc.get("lookup_value_name"))
+        if temp_list:
+            case.special_legal_problem_code = temp_list
+        del temp_list
+    if legalserver_data["intake_type"].get(
+        "lookup_value_name"
+    ) is not None and isinstance(legalserver_data["intake_type"], dict):
         case.intake_type = legalserver_data["intake_type"].get("lookup_value_name")
     if legalserver_data.get("impact") is not None:
         case.impact = legalserver_data.get("impact")
-    temp_list = []
-    for sc in legalserver_data["special_characteristics"]:
-        if sc.get("lookup_value_name") is not None:
-            temp_list.append(sc.get("lookup_value_name"))
-    if temp_list:
-        case.special_characteristics = temp_list
-    del temp_list
-    if legalserver_data["case_status"].get("lookup_value_name") is not None:
-        case.case_status = legalserver_data["case_status"].get("lookup_value_name")
-    if legalserver_data["close_reason"].get("lookup_value_name") is not None:
-        case.close_reason = legalserver_data["close_reason"].get("lookup_value_name")
+    if legalserver_data.get("special_characteristics") is not None and isinstance(
+        legalserver_data["special_characteristics"], list
+    ):
+        temp_list = []
+        for sc in legalserver_data["special_characteristics"]:
+            if sc.get("lookup_value_name") is not None:
+                temp_list.append(sc.get("lookup_value_name"))
+        if temp_list:
+            case.special_characteristics = temp_list
+        del temp_list
+    if legalserver_data.get("case_status") is not None and isinstance(
+        legalserver_data["case_status"], dict
+    ):
+        if legalserver_data["case_status"].get("lookup_value_name") is not None:
+            case.case_status = legalserver_data["case_status"].get("lookup_value_name")
+    if legalserver_data.get("close_reason") is not None and isinstance(
+        legalserver_data["close_reason"], dict
+    ):
+        if legalserver_data["close_reason"].get("lookup_value_name") is not None:
+            case.close_reason = legalserver_data["close_reason"].get(
+                "lookup_value_name"
+            )
     if legalserver_data.get("pro_bono_opportunity_summary") is not None:
         case.pro_bono_opportunity_summary = legalserver_data.get(
             "pro_bono_opportunity_summary"
         )
-    if legalserver_data.get("pro_bono_opportunity_county") is not None:
+    if legalserver_data.get("pro_bono_opportunity_county") is not None and isinstance(
+        legalserver_data["pro_bono_opportunity_county"], dict
+    ):
         if (
             legalserver_data["pro_bono_opportunity_county"].get("lookup_value_name")
             is not None
@@ -1714,81 +1812,121 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
         case.pro_bono_opportunity_placement_date = legalserver_data.get(
             "pro_bono_opportunity_placement_date"
         )
-    if (
-        legalserver_data["pro_bono_engagement_type"].get("lookup_value_name")
-        is not None
+    if legalserver_data.get("pro_bono_engagement_type") is not None and isinstance(
+        legalserver_data["pro_bono_engagement_type"], dict
     ):
-        case.pro_bono_engagement_type = legalserver_data[
-            "pro_bono_engagement_type"
-        ].get("lookup_value_name")
-    if (
-        legalserver_data["pro_bono_time_commitment"].get("lookup_value_name")
-        is not None
+        if (
+            legalserver_data["pro_bono_engagement_type"].get("lookup_value_name")
+            is not None
+        ):
+            case.pro_bono_engagement_type = legalserver_data[
+                "pro_bono_engagement_type"
+            ].get("lookup_value_name")
+    if legalserver_data.get("pro_bono_time_commitment") is not None and isinstance(
+        legalserver_data["pro_bono_time_commitment"], dict
     ):
-        case.pro_bono_time_commitment = legalserver_data[
-            "pro_bono_time_commitment"
-        ].get("lookup_value_name")
+        if (
+            legalserver_data["pro_bono_time_commitment"].get("lookup_value_name")
+            is not None
+        ):
+            case.pro_bono_time_commitment = legalserver_data[
+                "pro_bono_time_commitment"
+            ].get("lookup_value_name")
     if legalserver_data.get("pro_bono_urgent") is not None:
         case.pro_bono_urgent = legalserver_data.get("pro_bono_urgent")
     if legalserver_data.get("pro_bono_interest_cc") is not None:
         case.pro_bono_interest_cc = legalserver_data.get("pro_bono_interest_cc")
-    temp_list = []
-    for skill in legalserver_data["pro_bono_skills_developed"]:
-        if skill.get("lookup_value_name") is not None:
-            temp_list.append(skill.get("lookup_value_name"))
-    if temp_list:
-        case.pro_bono_skills_developed = temp_list
-    del temp_list
-    temp_list = []
-    for vol in legalserver_data["pro_bono_appropriate_volunteer"]:
-        if vol.get("lookup_value_name") is not None:
-            temp_list.append(vol.get("lookup_value_name"))
-    if temp_list != []:
-        case.pro_bono_appropriate_volunteer = temp_list
-    del temp_list
+    if legalserver_data.get("pro_bono_skills_developed") is not None and isinstance(
+        legalserver_data["pro_bono_skills_developed"], list
+    ):
+        temp_list = []
+        for skill in legalserver_data["pro_bono_skills_developed"]:
+            if skill.get("lookup_value_name") is not None:
+                temp_list.append(skill.get("lookup_value_name"))
+        if temp_list:
+            case.pro_bono_skills_developed = temp_list
+        del temp_list
+    if legalserver_data.get(
+        "pro_bono_appropriate_volunteer"
+    ) is not None and isinstance(
+        legalserver_data["pro_bono_appropriate_volunteer"], list
+    ):
+        temp_list = []
+        for vol in legalserver_data["pro_bono_appropriate_volunteer"]:
+            if vol.get("lookup_value_name") is not None:
+                temp_list.append(vol.get("lookup_value_name"))
+        if temp_list != []:
+            case.pro_bono_appropriate_volunteer = temp_list
+        del temp_list
     if legalserver_data.get("pro_bono_expiration_date") is not None:
         case.pro_bono_expiration_date = legalserver_data.get("pro_bono_expiration_date")
-    if (
-        legalserver_data["pro_bono_opportunity_status"].get("lookup_value_name")
-        is not None
+    if legalserver_data.get("pro_bono_opportunity_status") is not None and isinstance(
+        legalserver_data["pro_bono_opportunity_status"], dict
     ):
-        case.pro_bono_opportunity_status = legalserver_data[
-            "pro_bono_opportunity_status"
-        ].get("lookup_value_name")
+        if (
+            legalserver_data["pro_bono_opportunity_status"].get("lookup_value_name")
+            is not None
+        ):
+            case.pro_bono_opportunity_status = legalserver_data[
+                "pro_bono_opportunity_status"
+            ].get("lookup_value_name")
     if legalserver_data.get("pro_bono_opportunity_cc") is not None:
         case.pro_bono_opportunity_cc = legalserver_data.get("pro_bono_opportunity_cc")
-    temp_list = []
-    for topic in legalserver_data["simplejustice_opportunity_legal_topic"]:
-        if topic.get("lookup_value_name") is not None:
-            temp_list.append(topic.get("lookup_value_name"))
-    if temp_list != []:
-        case.simplejustice_opportunity_legal_topic = temp_list
-    del temp_list
-    temp_list = []
-    for community in legalserver_data["simplejustice_opportunity_helped_community"]:
-        if community.get("lookup_value_name") is not None:
-            temp_list.append(community.get("lookup_value_name"))
-    if temp_list != []:
-        case.simplejustice_opportunity_helped_community = temp_list
-    del temp_list
-    temp_list = []
-    for skill in legalserver_data["simplejustice_opportunity_skill_type"]:
-        if skill.get("lookup_value_name") is not None:
-            temp_list.append(skill.get("lookup_value_name"))
-    if temp_list != []:
-        case.simplejustice_opportunity_skill_type = temp_list
-    del temp_list
-    temp_list = []
-    for community in legalserver_data["simplejustice_opportunity_community"]:
-        if community.get("lookup_value_name") is not None:
-            temp_list.append(community.get("lookup_value_name"))
-    if temp_list != []:
-        case.simplejustice_opportunity_community = temp_list
-    del temp_list
-    if legalserver_data["level_of_expertise"].get("lookup_value_name") is not None:
-        case.level_of_expertise = legalserver_data["level_of_expertise"].get(
-            "lookup_value_name"
-        )
+    if legalserver_data.get(
+        "simplejustice_opportunity_legal_topic"
+    ) is not None and isinstance(
+        legalserver_data["simplejustice_opportunity_legal_topic"], list
+    ):
+        temp_list = []
+        for topic in legalserver_data["simplejustice_opportunity_legal_topic"]:
+            if topic.get("lookup_value_name") is not None:
+                temp_list.append(topic.get("lookup_value_name"))
+        if temp_list != []:
+            case.simplejustice_opportunity_legal_topic = temp_list
+        del temp_list
+    if legalserver_data.get(
+        "simplejustice_opportunity_helped_community"
+    ) is not None and isinstance(
+        legalserver_data["simplejustice_opportunity_helped_community"], list
+    ):
+        temp_list = []
+        for community in legalserver_data["simplejustice_opportunity_helped_community"]:
+            if community.get("lookup_value_name") is not None:
+                temp_list.append(community.get("lookup_value_name"))
+        if temp_list != []:
+            case.simplejustice_opportunity_helped_community = temp_list
+        del temp_list
+    if legalserver_data.get(
+        "simplejustice_opportunity_skill_type"
+    ) is not None and isinstance(
+        legalserver_data["simplejustice_opportunity_skill_type"], list
+    ):
+        temp_list = []
+        for skill in legalserver_data["simplejustice_opportunity_skill_type"]:
+            if skill.get("lookup_value_name") is not None:
+                temp_list.append(skill.get("lookup_value_name"))
+        if temp_list != []:
+            case.simplejustice_opportunity_skill_type = temp_list
+        del temp_list
+    if legalserver_data.get(
+        "simplejustice_opportunity_community"
+    ) is not None and isinstance(
+        legalserver_data["simplejustice_opportunity_community"], list
+    ):
+        temp_list = []
+        for community in legalserver_data["simplejustice_opportunity_community"]:
+            if community.get("lookup_value_name") is not None:
+                temp_list.append(community.get("lookup_value_name"))
+        if temp_list != []:
+            case.simplejustice_opportunity_community = temp_list
+        del temp_list
+    if legalserver_data.get("level_of_expertise") is not None and isinstance(
+        legalserver_data["level_of_expertise"], dict
+    ):
+        if legalserver_data["level_of_expertise"].get("lookup_value_name") is not None:
+            case.level_of_expertise = legalserver_data["level_of_expertise"].get(
+                "lookup_value_name"
+            )
     if legalserver_data.get("days_open") is not None:
         case.days_open = legalserver_data.get("days_open")
 
@@ -1800,17 +1938,29 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
         case.lsc_eligible = legalserver_data.get("lsc_eligible")
     if legalserver_data.get("income_eligible") is not None:
         case.income_eligible = legalserver_data.get("income_eligible")
-    if legalserver_data["how_referred"].get("lookup_value_name") is not None:
-        case.how_referred = legalserver_data["how_referred"].get("lookup_value_name")
+    if legalserver_data.get("how_referred") is not None and isinstance(
+        legalserver_data["how_referred"], dict
+    ):
+        if legalserver_data["how_referred"].get("lookup_value_name") is not None:
+            case.how_referred = legalserver_data["how_referred"].get(
+                "lookup_value_name"
+            )
     if legalserver_data.get("number_of_adults") is not None:
         case.number_of_adults = legalserver_data.get("number_of_adults")
-    temp_list = []
-    for rest in legalserver_data["case_restrictions"]:
-        if rest.get("lookup_value_name") is not None:
-            temp_list.append(rest.get("lookup_value_name"))
-    if temp_list:
-        case.case_restrictions = temp_list
-    del temp_list
+    if legalserver_data.get("number_of_children") is not None:
+        case.number_of_children = legalserver_data.get("number_of_children")
+    if legalserver_data.get("online_intake_payload") is not None:
+        case.online_intake_payload = legalserver_data.get("online_intake_payload")
+    if legalserver_data.get("case_restrictions") is not None and isinstance(
+        legalserver_data.get("case_restrictions"), list
+    ):
+        temp_list = []
+        for rest in legalserver_data["case_restrictions"]:
+            if rest.get("lookup_value_name") is not None:
+                temp_list.append(rest.get("lookup_value_name"))
+        if temp_list:
+            case.case_restrictions = temp_list
+        del temp_list
     ## these are users, perhaps do something else
     if legalserver_data.get("case_exclusions") is not None:
         case.case_exclusions = legalserver_data.get("case_exclusions")
@@ -1832,10 +1982,13 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
         case.conflict_waived = legalserver_data.get("conflict_waived")
     if legalserver_data.get("ap_conflict_waived") is not None:
         case.ap_conflict_waived = legalserver_data.get("ap_conflict_waived")
-    if legalserver_data["ssi_welfare_status"].get("lookup_value_name") is not None:
-        case.ssi_welfare_status = legalserver_data["ssi_welfare_status"].get(
-            "lookup_value_name"
-        )
+    if legalserver_data.get("ssi_welfare_status") is not None and isinstance(
+        legalserver_data["ssi_welfare_status"], dict
+    ):
+        if legalserver_data["ssi_welfare_status"].get("lookup_value_name") is not None:
+            case.ssi_welfare_status = legalserver_data["ssi_welfare_status"].get(
+                "lookup_value_name"
+            )
     if (
         legalserver_data.get("ssi_months_client_has_received_welfare_payments")
         is not None
@@ -1845,25 +1998,31 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
         )
     if legalserver_data.get("ssi_welfare_case_num") is not None:
         case.ssi_welfare_case_num = legalserver_data.get("ssi_welfare_case_num")
-    if (
-        legalserver_data["ssi_section8_housing_type"].get("lookup_value_name")
-        is not None
+    if legalserver_data.get("ssi_section8_housing_type") is not None and isinstance(
+        legalserver_data["ssi_section8_housing_type"], dict
     ):
-        case.ssi_section8_housing_type = legalserver_data[
-            "ssi_section8_housing_type"
-        ].get("lookup_value_name")
+        if (
+            legalserver_data["ssi_section8_housing_type"].get("lookup_value_name")
+            is not None
+        ):
+            case.ssi_section8_housing_type = legalserver_data[
+                "ssi_section8_housing_type"
+            ].get("lookup_value_name")
     if legalserver_data.get("ssi_eatra") is not None:
         case.ssi_eatra = legalserver_data.get("ssi_eatra")
     ## these are organizations, perhaps do something else.
     if legalserver_data.get("referring_organizations") is not None:
         case.referring_organizations = legalserver_data.get("referring_organizations")
-    temp_list = []
-    for add in legalserver_data["additional_assistance"]:
-        if add.get("lookup_value_name") is not None:
-            temp_list.append(add.get("lookup_value_name"))
-    if temp_list:
-        case.additional_assistance = temp_list
-    del temp_list
+    if legalserver_data.get("additional_assistance") is not None and isinstance(
+        legalserver_data.get("additional_assistance"), list
+    ):
+        temp_list = []
+        for add in legalserver_data["additional_assistance"]:
+            if add.get("lookup_value_name") is not None:
+                temp_list.append(add.get("lookup_value_name"))
+        if temp_list:
+            case.additional_assistance = temp_list
+        del temp_list
     if legalserver_data.get("pai_case") is not None:
         case.pai_case = legalserver_data.get("pai_case")
     if legalserver_data.get("client_approved_transfer") is not None:
@@ -1874,13 +2033,16 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
         case.transfer_reject_notes = legalserver_data.get("transfer_reject_notes")
     if legalserver_data.get("prior_client") is not None:
         case.prior_client = legalserver_data.get("prior_client")
-    temp_list = []
-    for pro in legalserver_data["priorities"]:
-        if pro.get("lookup_value_name") is not None:
-            temp_list.append(pro.get("lookup_value_name"))
-    if temp_list:
-        case.priorities = temp_list
-    del temp_list
+    if legalserver_data.get("priorities") is not None and isinstance(
+        legalserver_data.get("priorities"), list
+    ):
+        temp_list = []
+        for pro in legalserver_data["priorities"]:
+            if pro.get("lookup_value_name") is not None:
+                temp_list.append(pro.get("lookup_value_name"))
+        if temp_list:
+            case.priorities = temp_list
+        del temp_list
 
     if legalserver_data.get("asset_assistance") is not None:
         case.asset_assistance = legalserver_data.get("asset_assistance")
@@ -1936,22 +2098,34 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
         case.income_change_significantly = legalserver_data.get(
             "income_change_significantly"
         )
-    if legalserver_data["income_change_type"].get("lookup_value_name") is not None:
-        case.income_change_type = legalserver_data["income_change_type"].get(
-            "lookup_value_name"
-        )
-
-    if legalserver_data["hud_entity_poverty_band"].get("lookup_value_name") is not None:
-        case.hud_entity_poverty_band = legalserver_data["hud_entity_poverty_band"].get(
-            "lookup_value_name"
-        )
-    if (
-        legalserver_data["hud_statewide_poverty_band"].get("lookup_value_name")
-        is not None
+    if legalserver_data.get("income_change_type") is not None and isinstance(
+        legalserver_data["income_change_type"], dict
     ):
-        case.hud_statewide_poverty_band = legalserver_data[
-            "hud_statewide_poverty_band"
-        ].get("lookup_value_name")
+        if legalserver_data["income_change_type"].get("lookup_value_name") is not None:
+            case.income_change_type = legalserver_data["income_change_type"].get(
+                "lookup_value_name"
+            )
+
+    if legalserver_data.get("hud_entity_poverty_band") is not None and isinstance(
+        legalserver_data["hud_entity_poverty_band"], dict
+    ):
+        if (
+            legalserver_data["hud_entity_poverty_band"].get("lookup_value_name")
+            is not None
+        ):
+            case.hud_entity_poverty_band = legalserver_data[
+                "hud_entity_poverty_band"
+            ].get("lookup_value_name")
+    if legalserver_data.get("hud_statewide_poverty_band") is not None and isinstance(
+        legalserver_data["hud_statewide_poverty_band"], dict
+    ):
+        if (
+            legalserver_data["hud_statewide_poverty_band"].get("lookup_value_name")
+            is not None
+        ):
+            case.hud_statewide_poverty_band = legalserver_data[
+                "hud_statewide_poverty_band"
+            ].get("lookup_value_name")
     if legalserver_data.get("hud_statewide_median_income_percentage") is not None:
         case.hud_statewide_median_income_percentage = legalserver_data.get(
             "hud_statewide_median_income_percentage"
@@ -1960,12 +2134,17 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
         case.hud_area_median_income_percentage = legalserver_data.get(
             "hud_area_median_income_percentage"
         )
-    if legalserver_data["hud_ami_category"].get("lookup_value_name") is not None:
-        case.hud_ami_category = legalserver_data["hud_ami_category"].get(
-            "lookup_value_name"
-        )
+    if legalserver_data.get("hud_ami_category") is not None and isinstance(
+        legalserver_data["hud_ami_category"], dict
+    ):
+        if legalserver_data["hud_ami_category"].get("lookup_value_name") is not None:
+            case.hud_ami_category = legalserver_data["hud_ami_category"].get(
+                "lookup_value_name"
+            )
 
-    if legalserver_data.get("sharepoint_site_library") is not None:
+    if legalserver_data.get("sharepoint_site_library") is not None and isinstance(
+        legalserver_data["sharepoint_site_library"], dict
+    ):
         if (
             legalserver_data["sharepoint_site_library"].get("lookup_value_name")
             is not None
@@ -1977,10 +2156,14 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
         case.sending_site_identification_number = legalserver_data.get(
             "sending_site_identification_number"
         )
-    if legalserver_data.get("branch") is not None:
+    if legalserver_data.get("branch") is not None and isinstance(
+        legalserver_data["branch"], dict
+    ):
         if legalserver_data["branch"].get("lookup_value_name") is not None:
             case.branch = legalserver_data["branch"].get("lookup_value_name")
-    if legalserver_data.get("military_status") is not None:
+    if legalserver_data.get("military_status") is not None and isinstance(
+        legalserver_data["military_status"], dict
+    ):
         if legalserver_data["military_status"].get("lookup_value_name") is not None:
             case.military_status = legalserver_data["military_status"].get(
                 "lookup_value_name"
@@ -2001,7 +2184,9 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
         case.date_of_appointment_retention = legalserver_data.get(
             "date_of_appointment_retention"
         )
-    if legalserver_data.get("api_integration_preference") is not None:
+    if legalserver_data.get("api_integration_preference") is not None and isinstance(
+        legalserver_data["api_integration_preference"], dict
+    ):
         if (
             legalserver_data["api_integration_preference"].get("lookup_value_name")
             is not None
@@ -2009,13 +2194,16 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
             case.api_integration_preference = legalserver_data[
                 "api_integration_preference"
             ].get("lookup_value_name")
-    temp_list = []
-    for num in legalserver_data["court_tracking_numbers"]:
-        if num.get("court_tracking_number") is not None:
-            temp_list.append(num.get("court_tracking_number"))
-    if temp_list:
-        case.court_tracking_numbers = temp_list
-    del temp_list
+    if legalserver_data.get("court_tracking_numbers") is not None and isinstance(
+        legalserver_data.get("court_tracking_numbers"), list
+    ):
+        temp_list = []
+        for num in legalserver_data["court_tracking_numbers"]:
+            if num.get("court_tracking_number") is not None:
+                temp_list.append(num.get("court_tracking_number"))
+        if temp_list:
+            case.court_tracking_numbers = temp_list
+        del temp_list
     if legalserver_data.get("sharepoint_tracer_document_id") is not None:
         case.sharepoint_tracer_document_id = legalserver_data.get(
             "sharepoint_tracer_document_id"
@@ -2034,6 +2222,8 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
     }
     if custom_fields is not None:
         case.custom_fields = custom_fields
+    else:
+        case.custom_fields = {}
 
     log(f"LegalServer Case Object populated for a case.")
 
@@ -2096,7 +2286,9 @@ def populate_charges(
                     new_charge.statute_number = item.get("statute_number")
                 if item.get("penalty_class") is not None:
                     new_charge.penalty_class = item.get("penalty_class")
-                if item.get("lookup_charge") is not None:
+                if item.get("lookup_charge") is not None and isinstance(
+                    item["lookup_charge"], dict
+                ):
                     if item["lookup_charge"].get("charge_uuid") is not None:
                         new_charge.lookup_charge_uuid = item["lookup_charge"].get(
                             "charge_uuid"
@@ -2105,10 +2297,13 @@ def populate_charges(
                         new_charge.lookup_charge = item["lookup_charge"].get(
                             "lookup_charge"
                         )
-                if item["charge_outcome_id"].get("lookup_value_name") is not None:
-                    new_charge.charge_outcome_id = item["charge_outcome_id"].get(
-                        "lookup_value_name"
-                    )
+                if item.get("charge_outcome_id") is not None and isinstance(
+                    item["charge_outcome_id"], dict
+                ):
+                    if item["charge_outcome_id"].get("lookup_value_name") is not None:
+                        new_charge.charge_outcome_id = item["charge_outcome_id"].get(
+                            "lookup_value_name"
+                        )
                 if item.get("charge_name") is not None:
                     new_charge.charge_name = item.get("charge_name")
                 if item.get("disposition_date") is not None:
@@ -2117,22 +2312,30 @@ def populate_charges(
                     new_charge.top_charge = item.get("top_charge")
                 if item.get("note") is not None:
                     new_charge.note = item.get("note")
-                if item["previous_charge_id"].get("lookup_value_name") is not None:
-                    new_charge.previous_charge_id = item["previous_charge_id"].get(
-                        "lookup_value_name"
-                    )
+                if item.get("previous_charge_id") is not None:
+                    if item["previous_charge_id"].get("lookup_value_name") is not None:
+                        new_charge.previous_charge_id = item["previous_charge_id"].get(
+                            "lookup_value_name"
+                        )
                 if item.get("charge_reduction_date") is not None:
                     new_charge.charge_reduction_date = item.get("charge_reduction_date")
-                temp_list = []
-                for tag in item["charge_tag_id"]:
-                    if tag.get("lookup_value_name") is not None:
-                        temp_list.append(tag.get("lookup_value_name"))
-                if temp_list:
-                    new_charge.charge_tag_id = temp_list
-                del temp_list
+                if item.get("charge_tag_id") is not None and isinstance(
+                    item.get("charge_tag_id"), list
+                ):
+                    # charge_tag_id is a list of dicts, so we need to extract the names
+                    # from the lookup_value_name key in each dict
+                    temp_list = []
+                    for tag in item["charge_tag_id"]:
+                        if tag.get("lookup_value_name") is not None:
+                            temp_list.append(tag.get("lookup_value_name"))
+                    if temp_list:
+                        new_charge.charge_tag_id = temp_list
+                    del temp_list
                 if item.get("issue_note") is not None:
                     new_charge.issue_note = item.get("issue_note")
-                if item.get("dynamic_process") is not None:
+                if item.get("dynamic_process") is not None and isinstance(
+                    item["dynamic_process"], dict
+                ):
                     if item["dynamic_process"].get("dynamic_process_id") is not None:
                         new_charge.dynamic_process_id = item["dynamic_process"].get(
                             "dynamic_process_id"
@@ -2156,6 +2359,8 @@ def populate_charges(
                 }
                 if custom_fields is not None:
                     new_charge.custom_fields = custom_fields
+                else:
+                    new_charge.custom_fields = {}
                 del custom_fields
                 new_charge.complete = True
 
@@ -2203,26 +2408,34 @@ def populate_client(
         client.ssn = legalserver_data.get("ssn")
     if legalserver_data.get("veteran") is not None:
         client.is_veteran = legalserver_data.get("veteran")
-    if legalserver_data.get("client_gender") is not None:
+    if legalserver_data.get("client_gender") is not None and isinstance(
+        legalserver_data.get("client_gender"), dict
+    ):
         if legalserver_data["client_gender"].get("lookup_value_name") is not None:
             client.gender = legalserver_data["client_gender"].get("lookup_value_name")
-        elif isinstance(legalserver_data.get("client_gender"), str):
-            client.gender = legalserver_data.get("client_gender")
+    elif isinstance(legalserver_data.get("client_gender"), str):
+        client.gender = legalserver_data.get("client_gender")
     if legalserver_data.get("client_email_address") is not None:
         client.email = legalserver_data.get("client_email_address")
     if legalserver_data.get("date_of_birth") is not None:
         client.birthdate = legalserver_data.get("date_of_birth")
-    if legalserver_data.get("dob_status") is not None:
+    if legalserver_data.get("dob_status") is not None and isinstance(
+        legalserver_data["dob_status"], dict
+    ):
         if legalserver_data["dob_status"].get("lookup_value_name") is not None:
             client.dob_status = legalserver_data["dob_status"].get("lookup_value_name")
-    if legalserver_data.get("ssn_status") is not None:
+    if legalserver_data.get("ssn_status") is not None and isinstance(
+        legalserver_data["ssn_status"], dict
+    ):
         if legalserver_data["ssn_status"].get("lookup_value_name") is not None:
             client.ssn_status = legalserver_data["ssn_status"].get("lookup_value_name")
     if legalserver_data.get("salutation") is not None:
         client.salutation_to_use = legalserver_data.get("salutation")
     if legalserver_data.get("disabled") is not None:
         client.is_disabled = legalserver_data.get("disabled")
-    if legalserver_data.get("employment_status") is not None:
+    if legalserver_data.get("employment_status") is not None and isinstance(
+        legalserver_data["employment_status"], dict
+    ):
         if legalserver_data["employment_status"].get("lookup_value_name") is not None:
             client.employment_status = legalserver_data["employment_status"].get(
                 "lookup_value_name"
@@ -2230,7 +2443,9 @@ def populate_client(
         elif isinstance(legalserver_data.get("employment_status"), str):
             client.employment_status = legalserver_data.get("employment_status")
 
-    if legalserver_data.get("preferred_phone_number") is not None:
+    if legalserver_data.get("preferred_phone_number") is not None and isinstance(
+        legalserver_data["preferred_phone_number"], dict
+    ):
         if (
             legalserver_data["preferred_phone_number"].get("lookup_value_name")
             is not None
@@ -2259,34 +2474,40 @@ def populate_client(
     if legalserver_data.get("fax_phone_note") is not None:
         client.other_phone_note = legalserver_data.get("fax_phone_note")
 
-    if legalserver_data.get("language") is not None:
+    if legalserver_data.get("language") is not None and isinstance(
+        legalserver_data["language"], dict
+    ):
         if legalserver_data["language"].get("lookup_value_name") is not None:
             client.language_name = legalserver_data["language"].get("lookup_value_name")
             if (
                 language_code_from_name(
-                    legalserver_data["language"].get("lookup_value_name")
+                    str(legalserver_data["language"].get("lookup_value_name"))
                 )
                 != "Unknown"
             ):
                 client.language = language_code_from_name(
-                    legalserver_data["language"].get("lookup_value_name")
+                    str(legalserver_data["language"].get("lookup_value_name"))
                 )
-    if legalserver_data.get("second_language") is not None:
+    if legalserver_data.get("second_language") is not None and isinstance(
+        legalserver_data["second_language"], dict
+    ):
         if legalserver_data["second_language"].get("lookup_value_name") is not None:
             client.second_language_name = legalserver_data["second_language"].get(
                 "lookup_value_name"
             )
             if (
                 language_code_from_name(
-                    legalserver_data["second_language"].get("lookup_value_name")
+                    str(legalserver_data["second_language"].get("lookup_value_name"))
                 )
                 != "Unknown"
             ):
                 client.second_language = language_code_from_name(
-                    legalserver_data["second_language"].get("lookup_value_name")
+                    str(legalserver_data["second_language"].get("lookup_value_name"))
                 )
 
-    if legalserver_data.get("preferred_spoken_language") is not None:
+    if legalserver_data.get("preferred_spoken_language") is not None and isinstance(
+        legalserver_data["preferred_spoken_language"], dict
+    ):
         if (
             legalserver_data["preferred_spoken_language"].get("lookup_value_name")
             is not None
@@ -2296,19 +2517,25 @@ def populate_client(
             ].get("lookup_value_name")
             if (
                 language_code_from_name(
-                    legalserver_data["preferred_spoken_language"].get(
-                        "lookup_value_name"
+                    str(
+                        legalserver_data["preferred_spoken_language"].get(
+                            "lookup_value_name"
+                        )
                     )
                 )
                 != "Unknown"
             ):
                 client.preferred_spoken_language = language_code_from_name(
-                    legalserver_data["preferred_spoken_language"].get(
-                        "lookup_value_name"
+                    str(
+                        legalserver_data["preferred_spoken_language"].get(
+                            "lookup_value_name"
+                        )
                     )
                 )
 
-    if legalserver_data.get("preferred_written_language") is not None:
+    if legalserver_data.get("preferred_written_language") is not None and isinstance(
+        legalserver_data["preferred_written_language"], dict
+    ):
         if (
             legalserver_data["preferred_written_language"].get("lookup_value_name")
             is not None
@@ -2318,19 +2545,25 @@ def populate_client(
             ].get("lookup_value_name")
             if (
                 language_code_from_name(
-                    legalserver_data["preferred_written_language"].get(
-                        "lookup_value_name"
+                    str(
+                        legalserver_data["preferred_written_language"].get(
+                            "lookup_value_name"
+                        )
                     )
                 )
                 != "Unknown"
             ):
                 client.preferred_written_language = language_code_from_name(
-                    legalserver_data["preferred_written_language"].get(
-                        "lookup_value_name"
+                    str(
+                        legalserver_data["preferred_written_language"].get(
+                            "lookup_value_name"
+                        )
                     )
                 )
 
-    if legalserver_data.get("languages") is not None:
+    if legalserver_data.get("languages") is not None and isinstance(
+        legalserver_data["languages"], list
+    ):
         if (
             len(legalserver_data["languages"]) > 1
             or legalserver_data["languages"][0].get("lookup_value_name") is not None
@@ -2349,27 +2582,37 @@ def populate_client(
                         )
     if legalserver_data.get("interpreter") is not None:
         client.interpreter = legalserver_data.get("interpreter")
-    if legalserver_data.get("marital_status") is not None:
+    if legalserver_data.get("marital_status") is not None and isinstance(
+        legalserver_data["marital_status"], dict
+    ):
         if legalserver_data["marital_status"].get("lookup_value_name") is not None:
             client.marital_status = legalserver_data["marital_status"].get(
                 "lookup_value_name"
             )
-    if legalserver_data.get("citizenship") is not None:
+    if legalserver_data.get("citizenship") is not None and isinstance(
+        legalserver_data["citizenship"], dict
+    ):
         if legalserver_data["citizenship"].get("lookup_value_name") is not None:
             client.citizenship = legalserver_data["citizenship"].get(
                 "lookup_value_name"
             )
-    if legalserver_data.get("citizenship_country") is not None:
+    if legalserver_data.get("citizenship_country") is not None and isinstance(
+        legalserver_data["citizenship_country"], dict
+    ):
         if legalserver_data["citizenship_country"].get("lookup_value_name") is not None:
             client.citizenship_country = legalserver_data["citizenship_country"].get(
                 "lookup_value_name"
             )
-    if legalserver_data.get("country_of_origin") is not None:
+    if legalserver_data.get("country_of_origin") is not None and isinstance(
+        legalserver_data["country_of_origin"], dict
+    ):
         if legalserver_data["country_of_origin"].get("lookup_value_name") is not None:
             client.country_of_origin = legalserver_data["country_of_origin"].get(
                 "lookup_value_name"
             )
-    if legalserver_data.get("immigration_status") is not None:
+    if legalserver_data.get("immigration_status") is not None and isinstance(
+        legalserver_data.get("immigration_status"), dict
+    ):
         if legalserver_data["immigration_status"].get("lookup_value_name") is not None:
             client.immigration_status = legalserver_data["immigration_status"].get(
                 "lookup_value_name"
@@ -2379,13 +2622,19 @@ def populate_client(
     if legalserver_data.get("visa_number") is not None:
         client.visa_number = legalserver_data.get("visa_number")
 
-    if legalserver_data.get("race") is not None:
+    if legalserver_data.get("race") is not None and isinstance(
+        legalserver_data.get("race"), dict
+    ):
         if legalserver_data["race"].get("lookup_value_name") is not None:
             client.race = legalserver_data["race"].get("lookup_value_name")
-    if legalserver_data.get("ethnicity") is not None:
+    if legalserver_data.get("ethnicity") is not None and isinstance(
+        legalserver_data.get("ethnicity"), dict
+    ):
         if legalserver_data["ethnicity"].get("lookup_value_name") is not None:
             client.ethnicity = legalserver_data["ethnicity"].get("lookup_value_name")
-    if legalserver_data.get("current_living_situation") is not None:
+    if legalserver_data.get("current_living_situation") is not None and isinstance(
+        legalserver_data["current_living_situation"], dict
+    ):
         if (
             legalserver_data["current_living_situation"].get("lookup_value_name")
             is not None
@@ -2399,21 +2648,27 @@ def populate_client(
         )
     if legalserver_data.get("birth_city") is not None:
         client.birth_city = legalserver_data.get("birth_city")
-    if legalserver_data.get("birth_country") is not None:
+    if legalserver_data.get("birth_country") is not None and isinstance(
+        legalserver_data["birth_country"], dict
+    ):
         if legalserver_data["birth_country"].get("lookup_value_name") is not None:
             client.birth_country = legalserver_data["birth_country"].get(
                 "lookup_value_name"
             )
     if legalserver_data.get("drivers_license") is not None:
         client.drivers_license = legalserver_data.get("drivers_license")
-    if legalserver_data.get("highest_education") is not None:
+    if legalserver_data.get("highest_education") is not None and isinstance(
+        legalserver_data.get("highest_education"), dict
+    ):
         if legalserver_data["highest_education"].get("lookup_value_name") is not None:
             client.highest_education = legalserver_data["highest_education"].get(
                 "lookup_value_name"
             )
     if legalserver_data.get("institutionalized") is not None:
         client.institutionalized = legalserver_data.get("institutionalized")
-    if legalserver_data.get("institutionalized_at") is not None:
+    if legalserver_data.get("institutionalized_at") is not None and isinstance(
+        legalserver_data["institutionalized_at"], dict
+    ):
         if (
             legalserver_data["institutionalized_at"].get("organization_uuid")
             is not None
@@ -2428,23 +2683,31 @@ def populate_client(
             client.institutionalized_organization_name = legalserver_data[
                 "institutionalized_at"
             ].get("organization_name")
-    if legalserver_data.get("school_status") is not None:
+    if legalserver_data.get("school_status") is not None and isinstance(
+        legalserver_data.get("school_status"), dict
+    ):
         if legalserver_data["school_status"].get("lookup_value_name") is not None:
             client.school_status = legalserver_data["school_status"].get(
                 "lookup_value_name"
             )
-    if legalserver_data.get("military_status") is not None:
+    if legalserver_data.get("military_service") is not None and isinstance(
+        legalserver_data.get("military_service"), dict
+    ):
         if legalserver_data["military_service"].get("lookup_value_name") is not None:
             client.military_service = legalserver_data["military_service"].get(
                 "lookup_value_name"
             )
 
     # Client Home Address
-    if legalserver_data.get("client_address_home") is not None:
+    if legalserver_data.get("client_address_home") is not None and isinstance(
+        legalserver_data.get("client_address_home"), dict
+    ):
         if legalserver_data["client_address_home"].get("street") is not None:
             client.address.address = legalserver_data["client_address_home"].get(
                 "street"
             )
+        else:
+            client.address.address = "Unknown Street Address"
         ## LS Supports both Apt Num and Street2
         if (
             legalserver_data["client_address_home"].get("street_2") is not None
@@ -2475,13 +2738,16 @@ def populate_client(
             client.address.state = legalserver_data["client_address_home"].get("state")
         if legalserver_data["client_address_home"].get("zip") is not None:
             client.address.zip = legalserver_data["client_address_home"].get("zip")
-        if (
-            legalserver_data["client_address_home"]["county"].get("lookup_value_name")
-            is not None
-        ):
-            client.address.county = legalserver_data["client_address_home"][
-                "county"
-            ].get("lookup_value_name")
+        if legalserver_data["client_address_home"].get("county") is not None:
+            if (
+                legalserver_data["client_address_home"]["county"].get(
+                    "lookup_value_name"
+                )
+                is not None
+            ):
+                client.address.county = legalserver_data["client_address_home"][
+                    "county"
+                ].get("lookup_value_name")
 
         # GIS Fields
         if legalserver_data["client_address_home"].get("lon") is not None:
@@ -2501,7 +2767,7 @@ def populate_client(
             ):
                 client.address.census_tract = legalserver_data[
                     "client_address_home"
-                ].get("")
+                ].get("lookup_value_name")
         if legalserver_data["client_address_home"].get("geocoding_failed") is not None:
             client.address.ls_geocoding_failed = legalserver_data[
                 "client_address_home"
@@ -2563,7 +2829,9 @@ def populate_client(
                     setattr(client.address, key, value)
 
     # Client Mailing Address
-    if legalserver_data.get("client_address_mailing") is not None:
+    if legalserver_data.get("client_address_mailing") is not None and isinstance(
+        legalserver_data.get("client_address_mailing"), dict
+    ):
         if (
             legalserver_data["client_address_mailing"].get("street") is not None
             or legalserver_data["client_address_mailing"].get("apt_num") is not None
@@ -2574,50 +2842,53 @@ def populate_client(
         ):
             client.initializeAttribute("mailing_address", Address)
 
-        if legalserver_data["client_address_mailing"].get("street") is not None:
-            client.mailing_address.address = legalserver_data[
-                "client_address_mailing"
-            ].get("street")
-        ## LS Supports both Apt Num and Street2
-        if (
-            legalserver_data["client_address_mailing"].get("street_2") is not None
-            and legalserver_data["client_address_mailing"].get("apt_num") is None
-        ):
-            client.mailing_address.unit = legalserver_data[
-                "client_address_mailing"
-            ].get("street_2")
-        if (
-            legalserver_data["client_address_mailing"].get("apt_num") is not None
-            and legalserver_data["client_address_mailing"].get("street_2") is None
-        ):
-            client.mailing_address.unit = legalserver_data[
-                "client_address_mailing"
-            ].get("apt_num")
-        if (
-            legalserver_data["client_address_mailing"].get("apt_num") is not None
-            and legalserver_data["client_address_mailing"].get("street_2") is not None
-        ):
-            client.mailing_address.unit = legalserver_data[
-                "client_address_mailing"
-            ].get("apt_num")
-            if client.mailing_address.address is None:
+            if legalserver_data["client_address_mailing"].get("street") is not None:
                 client.mailing_address.address = legalserver_data[
                     "client_address_mailing"
-                ].get("street_2")
+                ].get("street")
             else:
-                client.mailing_address.address = f'{client.mailing_address.address}, {legalserver_data["client_address_mailing"].get("street_2")}'
-        if legalserver_data["client_address_mailing"].get("city") is not None:
-            client.mailing_address.city = legalserver_data[
-                "client_address_mailing"
-            ].get("city")
-        if legalserver_data["client_address_mailing"].get("state") is not None:
-            client.mailing_address.state = legalserver_data[
-                "client_address_mailing"
-            ].get("state")
-        if legalserver_data["client_address_mailing"].get("zip") is not None:
-            client.mailing_address.zip = legalserver_data["client_address_mailing"].get(
-                "zip"
-            )
+                client.mailing_address.address = "Unknown Street Address"
+            ## LS Supports both Apt Num and Street2
+            if (
+                legalserver_data["client_address_mailing"].get("street_2") is not None
+                and legalserver_data["client_address_mailing"].get("apt_num") is None
+            ):
+                client.mailing_address.unit = legalserver_data[
+                    "client_address_mailing"
+                ].get("street_2")
+            if (
+                legalserver_data["client_address_mailing"].get("apt_num") is not None
+                and legalserver_data["client_address_mailing"].get("street_2") is None
+            ):
+                client.mailing_address.unit = legalserver_data[
+                    "client_address_mailing"
+                ].get("apt_num")
+            if (
+                legalserver_data["client_address_mailing"].get("apt_num") is not None
+                and legalserver_data["client_address_mailing"].get("street_2")
+                is not None
+            ):
+                client.mailing_address.unit = legalserver_data[
+                    "client_address_mailing"
+                ].get("apt_num")
+                if client.mailing_address.address is None:
+                    client.mailing_address.address = legalserver_data[
+                        "client_address_mailing"
+                    ].get("street_2")
+                else:
+                    client.mailing_address.address = f'{client.mailing_address.address}, {legalserver_data["client_address_mailing"].get("street_2")}'
+            if legalserver_data["client_address_mailing"].get("city") is not None:
+                client.mailing_address.city = legalserver_data[
+                    "client_address_mailing"
+                ].get("city")
+            if legalserver_data["client_address_mailing"].get("state") is not None:
+                client.mailing_address.state = legalserver_data[
+                    "client_address_mailing"
+                ].get("state")
+            if legalserver_data["client_address_mailing"].get("zip") is not None:
+                client.mailing_address.zip = legalserver_data[
+                    "client_address_mailing"
+                ].get("zip")
 
     return client
 
@@ -2689,55 +2960,100 @@ def populate_contact_data(*, contact: Individual, contact_data: dict) -> Individ
 
     Returns:
         An Individual object.
+
+    Raises:
+        TypeError: If contact_data is not a dictionary or contact is not an Individual.
     """
+    try:
+        if not isinstance(contact_data, dict):
+            raise TypeError("contact_data must be a dictionary")
 
-    contact.id = contact_data.get("id")
-    contact.uuid = contact_data.get("contact_uuid")
+        if not isinstance(contact, Individual):
+            raise TypeError("contact must be an Individual object")
 
-    if contact_data.get("case_contact_uuid") is not None:
-        contact.case_contact_uuid = contact_data.get("case_contact_uuid")
-    contact.initializeAttribute("name", IndividualName)
-    if contact_data.get("first") is not None:
-        contact.name.first = contact_data.get("first")
-    if contact_data.get("middle") is not None:
-        contact.name.middle = contact_data.get("middle")
-    if contact_data.get("last") is not None:
-        contact.name.last = contact_data.get("last")
-    if contact_data.get("case_contact_type") is not None:
-        if contact_data["case_contact_type"].get("lookup_value_name") is not None:
-            contact.type = contact_data["case_contact_type"].get("lookup_value_name")
-    if contact_data.get("suffix") is not None:
-        contact.name.suffix = contact_data.get("suffix")
-    if contact_data.get("business_phone") is not None:
-        contact.phone = contact_data.get("business_phone")
-    if contact_data.get("email") is not None:
-        contact.email = contact_data.get("email")
+        # Check if contact_data contains an error key
+        if contact_data.get("error") is not None:
+            log(f"Error in contact data: {contact_data.get('error')}")
+            contact.has_error = True
+            contact.error_message = str(contact_data.get("error"))
+            return contact
 
-    templist = []
-    if contact_data.get("type") is not None:
-        for type in contact_data["type"]:
-            if type.get("lookup_value_name") is not None:
-                templist.append(type.get("lookup_value_name"))
-        if templist:
-            contact.type = templist
-    del templist
-    templist = []
-    if contact_data.get("contact_types") is not None:
-        for type in contact_data["contact_types"]:
-            if type.get("lookup_value_name") is not None:
-                templist.append(type.get("lookup_value_name"))
-        if templist:
-            contact.contact_types = templist
-    del templist
+        contact.id = contact_data.get("id")
+        contact.uuid = contact_data.get("contact_uuid")
 
-    standard_key_list = standard_contact_keys()
-    custom_fields = {
-        key: value
-        for key, value in contact_data.items()
-        if key not in standard_key_list
-    }
-    if custom_fields is not None:
-        contact.custom_fields = custom_fields
+        if contact_data.get("case_contact_uuid") is not None:
+            contact.case_contact_uuid = contact_data.get("case_contact_uuid")
+
+        contact.initializeAttribute("name", IndividualName)
+        if contact_data.get("first") is not None:
+            contact.name.first = contact_data.get("first")
+        if contact_data.get("middle") is not None:
+            contact.name.middle = contact_data.get("middle")
+        if contact_data.get("last") is not None:
+            contact.name.last = contact_data.get("last")
+        if contact_data.get("case_contact_type") is not None and isinstance(
+            contact_data.get("case_contact_type"), dict
+        ):
+            if contact_data["case_contact_type"].get("lookup_value_name") is not None:
+                contact.type = contact_data["case_contact_type"].get(
+                    "lookup_value_name"
+                )
+        if contact_data.get("suffix") is not None:
+            contact.name.suffix = contact_data.get("suffix")
+        if contact_data.get("business_phone") is not None:
+            contact.phone = contact_data.get("business_phone")
+        if contact_data.get("email") is not None:
+            contact.email = contact_data.get("email")
+
+        templist = []
+        if contact_data.get("type") is not None and isinstance(
+            contact_data.get("type"), list
+        ):
+            for type in contact_data["type"]:
+                if type.get("lookup_value_name") is not None:
+                    templist.append(type.get("lookup_value_name"))
+            if templist:
+                contact.type = templist
+        else:
+            log(f"Error processing contact type data: not a list or missing")
+        del templist
+
+        templist = []
+        if contact_data.get("contact_types") is not None and isinstance(
+            contact_data.get("contact_types"), list
+        ):
+            # contact_types is a list of dicts, so we need to extract the names
+            for type in contact_data["contact_types"]:
+                if type.get("lookup_value_name") is not None:
+                    templist.append(type.get("lookup_value_name"))
+            if templist:
+                contact.contact_types = templist
+        else:
+            log(f"Error processing contact_types data: not a list or missing")
+
+        del templist
+
+        try:
+            standard_key_list = standard_contact_keys()
+            custom_fields = {
+                key: value
+                for key, value in contact_data.items()
+                if key not in standard_key_list
+            }
+            if custom_fields is not None:
+                contact.custom_fields = custom_fields
+            else:
+                contact.custom_fields = {}
+        except Exception as e:
+            log(f"Error processing custom fields: {str(e)}")
+
+        contact.complete = True
+
+    except Exception as e:
+        log(f"Error in populate_contact_data: {str(e)}")
+        if isinstance(contact, dict | Individual | DAObject):
+            contact.has_error = True
+            contact.error_message = str(e)
 
     return contact
 
@@ -2841,18 +3157,29 @@ def populate_documents(
                     new_document.disk_file_size = item.get("disk_file_size")
                 else:
                     new_document.disk_file_size = 0
-                if item["storage_backend"].get("lookup_value_name") is not None:
-                    new_document.storage_backend = item["storage_backend"].get(
-                        "lookup_value_name"
-                    )
-                if item["type"].get("lookup_value_name") is not None:
-                    new_document.type = item["type"].get("lookup_value_name")
-                temp_list = []
-                for program in item["programs"]:
-                    if program.get("lookup_value_name") is not None:
-                        temp_list.append(program.get("lookup_value_name"))
-                if temp_list:
-                    new_document.programs = temp_list
+                if item.get("storage_backend") is not None and isinstance(
+                    item.get("storage_backend"), dict
+                ):
+                    if item["storage_backend"].get("lookup_value_name") is not None:
+                        new_document.storage_backend = item["storage_backend"].get(
+                            "lookup_value_name"
+                        )
+                if item.get("type") is not None:
+                    if item["type"].get("lookup_value_name") is not None and isinstance(
+                        item.get("type"), dict
+                    ):
+                        new_document.type = item["type"].get("lookup_value_name")
+                if item.get("programs") is not None and isinstance(
+                    item.get("programs"), list
+                ):
+                    # programs is a list of dicts, so we need to extract the names
+                    temp_list = []
+                    for program in item["programs"]:
+                        if program.get("lookup_value_name") is not None:
+                            temp_list.append(program.get("lookup_value_name"))
+                    if temp_list:
+                        new_document.programs = temp_list
+                    del temp_list
                 if item.get("folder") is not None:
                     new_document.folder = item.get("folder")
                 if item.get("funding_code") is not None:
@@ -2899,35 +3226,48 @@ def populate_event_data(*, event: DAObject, event_data: dict) -> DAObject:
         event.front_desk = event_data.get("front_desk")
     if event_data.get("broadcast_event") is not None:
         event.broadcast_event = event_data.get("broadcast_event")
-    if event_data.get("court") is not None:
+    if event_data.get("court") is not None and isinstance(
+        event_data.get("court"), dict
+    ):
         if event_data["court"].get("organization_name") is not None:
             event.court_name = event_data["court"].get("organization_name")
         if event_data["court"].get("organization_uuid") is not None:
             event.court_uuid = event_data["court"].get("organization_uuid")
     if event_data.get("courtroom") is not None:
         event.courtroom = event_data.get("courtroom")
-    if event_data["event_type"].get("lookup_value_name") is not None:
-        event.event_type = event_data["event_type"].get("lookup_value_name")
+    if event_data.get("event_type") is not None and isinstance(
+        event_data.get("event_type"), dict
+    ):
+        if event_data["event_type"].get("lookup_value_name") is not None:
+            event.event_type = event_data["event_type"].get("lookup_value_name")
     if event_data.get("judge") is not None:
         event.judge = event_data.get("judge")
     if event_data.get("attendees") is not None:
         event.attendees = event_data.get("attendees")
     if event_data.get("private_event") is not None:
         event.private_event = event_data.get("private_event")
-    temp_list = []
-    for user in event_data["attendees"]:
-        if user.get("user_uuid") is not None:
-            temp_list.append(
-                {
-                    "user_uuid": user.get("user_uuid"),
-                    "user_name": user.get("user_name"),
-                }
-            )
-    if temp_list:
-        event.attendees = temp_list
-    del temp_list
+    if event_data.get("attendees") is not None and isinstance(
+        event_data.get("attendees"), list
+    ):
+        # attendees is a list of dicts, so we need to extract the user_uuid and user_name
+        # from each dict and create a new list of dicts with those keys
+        # if the user_uuid is not None
+        temp_list = []
+        for user in event_data["attendees"]:
+            if user.get("user_uuid") is not None:
+                temp_list.append(
+                    {
+                        "user_uuid": user.get("user_uuid"),
+                        "user_name": user.get("user_name"),
+                    }
+                )
+        if temp_list:
+            event.attendees = temp_list
+        del temp_list
 
-    if event_data.get("dynamic_process_id") is not None:
+    if event_data.get("dynamic_process_id") is not None and isinstance(
+        event_data.get("dynamic_process_id"), dict
+    ):
         if event_data["dynamic_process_id"].get("dynamic_process_id") is not None:
             event.dynamic_process_id = event_data["dynamic_process_id"].get(
                 "dynamic_process_id"
@@ -2947,9 +3287,14 @@ def populate_event_data(*, event: DAObject, event_data: dict) -> DAObject:
     event.end_datetime = event_data.get("end_datetime")
     if event_data.get("all_day_event") is not None:
         event.all_day_event = event_data.get("all_day_event")
-    if event_data["program"].get("lookup_value_name") is not None:
-        event.program = event_data["program"].get("lookup_value_name")
-    if event_data.get("office") is not None:
+    if event_data.get("program") is not None and isinstance(
+        event_data.get("program"), dict
+    ):
+        if event_data["program"].get("lookup_value_name") is not None:
+            event.program = event_data["program"].get("lookup_value_name")
+    if event_data.get("office") is not None and isinstance(
+        event_data.get("office"), dict
+    ):
         if event_data["office"].get("office_name") is not None:
             event.office_name = event_data["office"].get("office_name")
         if event_data["office"].get("office_code") is not None:
@@ -2963,6 +3308,8 @@ def populate_event_data(*, event: DAObject, event_data: dict) -> DAObject:
     }
     if custom_fields is not None:
         event.custom_fields = custom_fields
+    else:
+        event.custom_fields = {}
     del custom_fields
 
     return event
@@ -3044,38 +3391,42 @@ def populate_first_pro_bono_assignment(
     Returns:
         The supplied Individual object.
     """
-    if len(assignment_list) == 0:
+    if not defined("assignment_list.gathered"):
         assignment_list = populate_assignments(
             assignment_list=assignment_list,
             legalserver_data=legalserver_data,
             legalserver_matter_uuid=legalserver_matter_uuid,
             legalserver_site=legalserver_site,
         )
-    legalserver_first_pro_bono_assignment.assignment_start_date = current_datetime()
+    earliest_assignment_start_date = current_datetime()
+    earliest_user_uuid = ""
     for assignment in assignment_list:
         if isinstance(assignment, DAObject):
             if assignment.end_date is None and assignment.type == "Pro Bono":
                 if (
                     date_difference(
                         assignment.start_date,
-                        legalserver_first_pro_bono_assignment.assignment_start_date,
+                        earliest_assignment_start_date,
                     ).days  # type: ignore
                     > 0
                 ):
-                    legalserver_first_pro_bono_assignment.user_uuid = (
-                        assignment.user_uuid
-                    )
-                    legalserver_first_pro_bono_assignment.assignment_start_date = (
-                        assignment.start_date
-                    )
-                    user_data = get_user_details(
-                        legalserver_site=legalserver_site,
-                        legalserver_user_uuid=legalserver_first_pro_bono_assignment.user_uuid,
-                        custom_fields=user_custom_fields,
-                    )
-                    legalserver_first_pro_bono_assignment = populate_user_data(
-                        user=legalserver_first_pro_bono_assignment, user_data=user_data
-                    )
+                    earliest_user_uuid = assignment.user_uuid
+                    earliest_assignment_start_date = assignment.start_date
+
+    if not earliest_user_uuid == "":
+        user_data = get_user_details(
+            legalserver_site=legalserver_site,
+            legalserver_user_uuid=earliest_user_uuid,
+            custom_fields=user_custom_fields,
+        )
+        legalserver_first_pro_bono_assignment = populate_user_data(
+            user=legalserver_first_pro_bono_assignment, user_data=user_data
+        )
+        legalserver_first_pro_bono_assignment.assignment_start_date = (
+            earliest_assignment_start_date
+        )
+    del earliest_user_uuid
+    del earliest_assignment_start_date
     return legalserver_first_pro_bono_assignment
 
 
@@ -3284,7 +3635,7 @@ def populate_income(
                 new_income.family_id = item.get("family_id")
             if item.get("other_family") is not None:
                 new_income.other_family = item.get("other_family")
-            if item.get("type") is not None:
+            if item.get("type") is not None and isinstance(item.get("type"), dict):
                 if item["type"].get("lookup_value_name") is not None:
                     new_income.type = item["type"].get("lookup_value_name")
             if item.get("amount") is not None:
@@ -3331,40 +3682,41 @@ def populate_latest_pro_bono_assignment(
     Returns:
         The supplied Individual object.
     """
-    if len(assignment_list) == 0:
+    if not defined("assignment_list.gathered"):
         assignment_list = populate_assignments(
             assignment_list=assignment_list,
             legalserver_data=legalserver_data,
             legalserver_matter_uuid=legalserver_matter_uuid,
             legalserver_site=legalserver_site,
         )
-    legalserver_latest_pro_bono_assignment.assignment_start_date = (
-        date.today() - date_interval(years=100)
-    )
+    assignment_start_date = date.today() - date_interval(years=100)
+    assignment_user_uuid = ""
     for assignment in assignment_list:
         if isinstance(assignment, DAObject):
             if assignment.end_date is None and assignment.type == "Pro Bono":
                 if (
                     date_difference(
                         assignment.start_date,
-                        legalserver_latest_pro_bono_assignment.assignment_start_date,
+                        assignment_start_date,
                     ).days  # type: ignore
                     < 0
                 ):
-                    legalserver_latest_pro_bono_assignment.user_uuid = (
-                        assignment.user_uuid
-                    )
-                    legalserver_latest_pro_bono_assignment.assignment_start_date = (
-                        assignment.start_date
-                    )
-                    user_data = get_user_details(
-                        legalserver_site=legalserver_site,
-                        legalserver_user_uuid=legalserver_latest_pro_bono_assignment.user_uuid,
-                        custom_fields=user_custom_fields,
-                    )
-                    legalserver_latest_pro_bono_assignment = populate_user_data(
-                        user=legalserver_latest_pro_bono_assignment, user_data=user_data
-                    )
+                    assignment_user_uuid = assignment.user_uuid
+                    assignment_start_date = assignment.start_date
+    if not assignment_user_uuid == "":
+        user_data = get_user_details(
+            legalserver_site=legalserver_site,
+            legalserver_user_uuid=assignment_user_uuid,
+            custom_fields=user_custom_fields,
+        )
+        legalserver_latest_pro_bono_assignment = populate_user_data(
+            user=legalserver_latest_pro_bono_assignment, user_data=user_data
+        )
+        legalserver_latest_pro_bono_assignment.assignment_start_date = (
+            assignment_start_date
+        )
+    del assignment_start_date
+    del assignment_user_uuid
     return legalserver_latest_pro_bono_assignment
 
 
@@ -3419,7 +3771,9 @@ def populate_litigations(
                     new_litigation.litigation_id = item.get("id")
                 if item.get("court_text") is not None:
                     new_litigation.court_text = item.get("court_text")
-                if item.get("court_id") is not None:
+                if item.get("court_id") is not None and isinstance(
+                    item.get("court_id"), dict
+                ):
                     if item["court_id"].get("organization_name") is not None:
                         new_litigation.court_name = item["court_id"].get(
                             "organization_name"
@@ -3458,7 +3812,9 @@ def populate_litigations(
                     new_litigation.date_proceeding_concluded = item.get(
                         "date_proceeding_concluded"
                     )
-                if item.get("dynamic_process") is not None:
+                if item.get("dynamic_process") is not None and isinstance(
+                    item.get("dynamic_process"), dict
+                ):
                     if item["dynamic_process"].get("dynamic_process_id") is not None:
                         new_litigation.dynamic_process_id = item["dynamic_process"].get(
                             "dynamic_process_id"
@@ -3481,14 +3837,23 @@ def populate_litigations(
                     new_litigation.lsc_disclosure_required = item.get(
                         "lsc_disclosure_required"
                     )
-                if item["litigation_relationship"].get("lookup_value_name") is not None:
-                    new_litigation.litigation_relationship = item[
-                        "litigation_relationship"
-                    ].get("lookup_value_name")
-                if item["filing_type"].get("lookup_value_name") is not None:
-                    new_litigation.filing_type = item["filing_type"].get(
-                        "lookup_value_name"
-                    )
+                if item.get("litigation_relationship") is not None and isinstance(
+                    item.get("litigation_relationship"), dict
+                ):
+                    if (
+                        item["litigation_relationship"].get("lookup_value_name")
+                        is not None
+                    ):
+                        new_litigation.litigation_relationship = item[
+                            "litigation_relationship"
+                        ].get("lookup_value_name")
+                if item.get("filing_type") is not None and isinstance(
+                    item.get("filing_type"), dict
+                ):
+                    if item["filing_type"].get("lookup_value_name") is not None:
+                        new_litigation.filing_type = item["filing_type"].get(
+                            "lookup_value_name"
+                        )
                 if item.get("number_of_people_served") is not None:
                     new_litigation.number_of_people_served = item.get(
                         "number_of_people_served"
@@ -3504,6 +3869,8 @@ def populate_litigations(
                 }
                 if custom_fields is not None:
                     new_litigation.custom_fields = custom_fields
+                else:
+                    new_litigation.custom_fields = {}
                 del custom_fields
                 new_litigation.complete = True
         log(f"Litigations Populated for a case.")
@@ -3556,13 +3923,17 @@ def populate_organization_data(
     if organization_data.get("parent_organization") is not None:
         organization.parent_organization = organization_data.get("parent_organization")
 
-    temp_list = []
-    for type in organization_data["types"]:
-        if type.get("lookup_value_name") is not None:
-            temp_list.append(type.get("lookup_value_name"))
-    if temp_list:
-        organization.types = temp_list
-    del temp_list
+    if organization_data.get("types") is not None and isinstance(
+        organization_data.get("types"), list
+    ):
+        # types is a list of dicts, so we need to extract the names
+        temp_list = []
+        for type in organization_data["types"]:
+            if type.get("lookup_value_name") is not None:
+                temp_list.append(type.get("lookup_value_name"))
+        if temp_list:
+            organization.types = temp_list
+        del temp_list
 
     if organization_data.get("phone") is not None:
         organization.phone_business = organization_data.get("phone")
@@ -3594,7 +3965,9 @@ def populate_organization_data(
         if organization_data.get("zip") is not None:
             organization.address.zip = organization_data.get("zip")
 
-    if organization_data.get("dynamic_process") is not None:
+    if organization_data.get("dynamic_process") is not None and isinstance(
+        organization_data.get("dynamic_process"), dict
+    ):
         organization.dynamic_process_id = organization_data["dynamic_process"].get(
             "dynamic_process_id"
         )
@@ -3613,6 +3986,8 @@ def populate_organization_data(
     }
     if custom_fields is not None:
         organization.custom_fields = custom_fields
+    else:
+        organization.custom_fields = {}
     del custom_fields
 
     return organization
@@ -3679,61 +4054,89 @@ def populate_non_adverse_parties(
                 new_nap.date_of_birth = item.get("date_of_birth")
             if item.get("approximate_dob") is not None:
                 new_nap.approximate_dob = item.get("approximate_dob")
-            if item["relationship_type"].get("lookup_value_name") is not None:
-                new_nap.relationship_type = item["relationship_type"].get(
-                    "lookup_value_name"
-                )
-            if item["language"].get("lookup_value_name") is not None:
-                new_nap.language_name = item["language"].get("lookup_value_name")
-                if (
-                    language_code_from_name(item["language"].get("lookup_value_name"))
-                    != "Unknown"
-                ):
-                    new_nap.language = language_code_from_name(
-                        item["language"].get("lookup_value_name")
+            if item.get("relationship_type") is not None and isinstance(
+                item.get("relationship_type"), dict
+            ):
+                if item["relationship_type"].get("lookup_value_name") is not None:
+                    new_nap.relationship_type = item["relationship_type"].get(
+                        "lookup_value_name"
                     )
-            if item.get("gender") is not None:
+            if item.get("language") is not None and isinstance(
+                item.get("language"), dict
+            ):
+                if item["language"].get("lookup_value_name") is not None:
+                    new_nap.language_name = item["language"].get("lookup_value_name")
+                    if (
+                        language_code_from_name(
+                            item["language"].get("lookup_value_name")
+                        )
+                        != "Unknown"
+                    ):
+                        new_nap.language = language_code_from_name(
+                            item["language"].get("lookup_value_name")
+                        )
+            if item.get("gender") is not None and isinstance(item.get("gender"), dict):
                 if item["gender"].get("lookup_value_name") is not None:
                     new_nap.gender = item["gender"].get("lookup_value_name")
             if item.get("ssn") is not None:
                 new_nap.ssn = item.get("ssn")
-            if item.get("country_of_birth") is not None:
+            if item.get("country_of_birth") is not None and isinstance(
+                item.get("country_of_birth"), dict
+            ):
                 ## TODO country codes
                 if item["country_of_birth"].get("lookup_value_name") is not None:
                     new_nap.country_of_birth_name = item["country_of_birth"].get(
                         "lookup_value_name"
                     )
-            if item["race"].get("lookup_value_name") is not None:
-                new_nap.race = item["race"].get("lookup_value_name")
+            if item.get("race") is not None and isinstance(item.get("race"), dict):
+                if item["race"].get("lookup_value_name") is not None:
+                    new_nap.race = item["race"].get("lookup_value_name")
             if item.get("veteran") is not None:
                 new_nap.veteran = item.get("veteran")
             if item.get("disabled") is not None:
                 new_nap.disabled = item.get("disabled")
-            if item.get("hud_race") is not None:
+            if item.get("hud_race") is not None and isinstance(
+                item.get("hud_race"), dict
+            ):
                 if item["hud_race"].get("lookup_value_name") is not None:
                     new_nap.hud_race = item["hud_race"].get("lookup_value_name")
-            if item.get("hud_9902_ethnicity") is not None:
+            if item.get("hud_9902_ethnicity") is not None and isinstance(
+                item.get("hud_9902_ethnicity"), dict
+            ):
                 if item["hud_9902_ethnicity"].get("hud_9902_ethnicity") is not None:
                     new_nap.hud_9902_ethnicity = item["hud_9902_ethnicity"].get(
                         "lookup_value_name"
                     )
-            if item.get("hud_disabling_condition") is not None:
+            if item.get("hud_disabling_condition") is not None and isinstance(
+                item.get("hud_disabling_condition"), dict
+            ):
                 if item["hud_disabling_condition"].get("lookup_value_name") is not None:
                     new_nap.hud_disabling_condition = item[
                         "hud_disabling_condition"
                     ].get("lookup_value_name")
             if item.get("visa_number") is not None:
                 new_nap.visa_number = item.get("visa_number")
-            if item["immigration_status"].get("lookup_value_name") is not None:
-                new_nap.immigration_status = item["immigration_status"].get(
-                    "lookup_value_name"
-                )
-            if item["citizenship_status"].get("lookup_value_name") is not None:
-                new_nap.citizenship_status = item["citizenship_status"].get(
-                    "lookup_value_name"
-                )
-            if item["marital_status"].get("lookup_value_name") is not None:
-                new_nap.marital_status = item["marital_status"].get("lookup_value_name")
+            if item.get("immigration_status") is not None and isinstance(
+                item.get("immigration_status"), dict
+            ):
+                if item["immigration_status"].get("lookup_value_name") is not None:
+                    new_nap.immigration_status = item["immigration_status"].get(
+                        "lookup_value_name"
+                    )
+            if item.get("citizenship_status") is not None and isinstance(
+                item.get("citizenship_status"), dict
+            ):
+                if item["citizenship_status"].get("lookup_value_name") is not None:
+                    new_nap.citizenship_status = item["citizenship_status"].get(
+                        "lookup_value_name"
+                    )
+            if item.get("marital_status") is not None and isinstance(
+                item.get("marital_status"), dict
+            ):
+                if item["marital_status"].get("lookup_value_name") is not None:
+                    new_nap.marital_status = item["marital_status"].get(
+                        "lookup_value_name"
+                    )
             if item.get("government_generated_id") is not None:
                 # this is a list in the response, but it is not a list of lookups.
                 if len(item.get("government_generated_id")) > 0:
@@ -3752,17 +4155,21 @@ def populate_non_adverse_parties(
                 new_nap.address.state = item.get("state")
             if item.get("zip_code") is not None:
                 new_nap.address.zip = item.get("zip_code")
-            if item["county"].get("lookup_value_name") is not None:
-                new_nap.address.county = item["county"].get("lookup_value_name")
-                new_nap.address.county_uuid = item["county"].get("lookup_value_uuid")
-                if item["county"].get("lookup_value_state") is not None:
-                    new_nap.address.county_state = item["county"].get(
-                        "lookup_value_state"
-                    )
-                if item["county"].get("lookup_value_FIPS") is not None:
-                    new_nap.address.county_FIPS = item["county"].get(
-                        "lookup_value_FIPS"
-                    )
+            if item.get("county") is not None and isinstance(item.get("county"), dict):
+                if item["county"].get("lookup_value_name") is not None:
+                    new_nap.address.county = item["county"].get("lookup_value_name")
+                    if item["county"].get("lookup_value_uuid") is not None:
+                        new_nap.address.county_uuid = item["county"].get(
+                            "lookup_value_uuid"
+                        )
+                    if item["county"].get("lookup_value_state") is not None:
+                        new_nap.address.county_state = item["county"].get(
+                            "lookup_value_state"
+                        )
+                    if item["county"].get("lookup_value_FIPS") is not None:
+                        new_nap.address.county_FIPS = item["county"].get(
+                            "lookup_value_FIPS"
+                        )
             if item.get("phone_home") is not None:
                 new_nap.phone_home = item.get("phone_home")
             if item.get("phone_home_note") is not None:
@@ -3800,6 +4207,8 @@ def populate_non_adverse_parties(
             }
             if custom_fields is not None:
                 new_nap.custom_fields = custom_fields
+            else:
+                new_nap.custom_fields = {}
             del custom_fields
 
             new_nap.complete = True
@@ -3853,8 +4262,11 @@ def populate_notes(
                     new_note.subject = item.get("subject")
                 if item.get("body") is not None:
                     new_note.body = item.get("body")
-                if item["note_type"].get("lookup_value_name") is not None:
-                    new_note.note_type = item["note_type"].get("lookup_value_name")
+                if item.get("note_type") is not None and isinstance(
+                    item.get("note_type"), dict
+                ):
+                    if item["note_type"].get("lookup_value_name") is not None:
+                        new_note.note_type = item["note_type"].get("lookup_value_name")
                 if item.get("date_posted") is not None:
                     new_note.date_posted = item.get("date_posted")
                 if item.get("date_time_created") is not None:
@@ -3873,12 +4285,16 @@ def populate_notes(
                     new_note.note_has_document_attached = item.get(
                         "note_has_document_attached"
                     )
-                if item.get("created_by") is not None:
+                if item.get("created_by") is not None and isinstance(
+                    item.get("created_by"), dict
+                ):
                     if item["created_by"].get("user_uuid") is not None:
                         new_note.created_by_uuid = item["created_by"].get("user_uuid")
                     if item["created_by"].get("user_name") is not None:
                         new_note.created_by_name = item["created_by"].get("user_name")
-                if item.get("last_updated_by") is not None:
+                if item.get("last_updated_by") is not None and isinstance(
+                    item.get("last_updated_by"), dict
+                ):
                     if item["last_updated_by"].get("user_uuid") is not None:
                         new_note.last_updated_by_uuid = item["last_updated_by"].get(
                             "user_uuid"
@@ -3919,7 +4335,7 @@ def populate_primary_assignment(
     Returns:
         The supplied Individual object.
     """
-    if len(assignment_list) == 0:
+    if not defined("assignment_list.gathered"):
         assignment_list = populate_assignments(
             assignment_list=assignment_list,
             legalserver_data=legalserver_data,
@@ -3971,7 +4387,7 @@ def populate_pro_bono_assignments(
         The supplied DAList of Individuals.
     """
     pro_bono_list = []
-    if len(assignment_list) == 0:
+    if not defined("assignment_list.gathered"):
         assignment_list = populate_assignments(
             assignment_list=assignment_list,
             legalserver_data=legalserver_data,
@@ -4046,11 +4462,14 @@ def populate_services(
                     new_service.title = item.get("title")
                 if item.get("start_date") is not None:
                     new_service.start_date = item.get("start_date")
-                if item["type"].get("lookup_value_name") is not None:
-                    new_service.type = item["type"].get("lookup_value_name")
+                if item.get("type") is not None and isinstance(item.get("type"), dict):
+                    if item["type"].get("lookup_value_name") is not None:
+                        new_service.type = item["type"].get("lookup_value_name")
                 if item.get("end_date") is not None:
                     new_service.end_date = item.get("end_date")
-                if item.get("closed_by") is not None:
+                if item.get("closed_by") is not None and isinstance(
+                    item.get("closed_by"), dict
+                ):
                     if item["closed_by"].get("user_uuid") is not None:
                         new_service.closed_by_uuid = item["closed_by"].get("user_uuid")
                     if item["closed_by"].get("user_name") is not None:
@@ -4061,7 +4480,9 @@ def populate_services(
                     new_service.closed = item.get("closed")
                 if item.get("active") is not None:
                     new_service.active = item.get("active")
-                if item.get("dynamic_process") is not None:
+                if item.get("dynamic_process") is not None and isinstance(
+                    item.get("dynamic_process"), dict
+                ):
                     if item["dynamic_process"].get("dynamic_process_id") is not None:
                         new_service.dynamic_process_id = item["dynamic_process"].get(
                             "dynamic_process_id"
@@ -4074,8 +4495,11 @@ def populate_services(
                         new_service.dynamic_process_name = item["dynamic_process"].get(
                             "dynamic_process_name"
                         )
-                if item["decision"].get("lookup_value_name") is not None:
-                    new_service.decision = item["decision"].get("lookup_value_name")
+                if item.get("decision") is not None and isinstance(
+                    item.get("decision"), dict
+                ):
+                    if item["decision"].get("lookup_value_name") is not None:
+                        new_service.decision = item["decision"].get("lookup_value_name")
                 if item.get("funding_code") is not None:
                     new_service.funding_code = item.get("funding_code")
                 if item.get("external_id") is not None:
@@ -4091,6 +4515,8 @@ def populate_services(
                 }
                 if custom_fields is not None:
                     new_service.custom_fields = custom_fields
+                else:
+                    new_service.custom_fields = {}
                 del custom_fields
                 new_service.complete = True
         log(f"Services Populated for a case.")
@@ -4125,10 +4551,14 @@ def populate_task_data(
         legalserver_task.due_date = task_data.get("due_date")
     if task_data.get("active") is not None:
         legalserver_task.active = task_data.get("active")
-    if task_data.get("task_type") is not None:
+    if task_data.get("task_type") is not None and isinstance(
+        task_data["task_type"], dict
+    ):
         if task_data["task_type"].get("lookup_value_name") is not None:
             legalserver_task.task_type = task_data["task_type"].get("lookup_value_name")
-    if task_data.get("deadline_type") is not None:
+    if task_data.get("deadline_type") is not None and isinstance(
+        task_data["deadline_type"], dict
+    ):
         if task_data["deadline_type"].get("lookup_value_name") is not None:
             legalserver_task.deadline_type = task_data["deadline_type"].get(
                 "lookup_value_name"
@@ -4139,7 +4569,9 @@ def populate_task_data(
         legalserver_task.private = task_data.get("private")
     if task_data.get("completed") is not None:
         legalserver_task.completed = task_data.get("completed")
-    if task_data.get("completed_by") is not None:
+    if task_data.get("completed_by") is not None and isinstance(
+        task_data["completed_by"], dict
+    ):
         if task_data["completed_by"].get("user_uuid") is not None:
             legalserver_task.completed_by_uuid = task_data["completed_by"].get(
                 "user_uuid"
@@ -4151,20 +4583,23 @@ def populate_task_data(
     if task_data.get("completed_date") is not None:
         legalserver_task.completed_date = task_data.get("completed_date")
 
-    temp_list = []
-    for user in task_data["users"]:
-        if user.get("user_uuid") is not None:
-            temp_list.append(
-                {
-                    "user_uuid": user.get("user_uuid"),
-                    "user_name": user.get("user_name"),
-                }
-            )
-    if temp_list:
-        legalserver_task.users = temp_list
-    del temp_list
+    if task_data.get("users") is not None and isinstance(task_data["users"], list):
+        temp_list = []
+        for user in task_data["users"]:
+            if user.get("user_uuid") is not None:
+                temp_list.append(
+                    {
+                        "user_uuid": user.get("user_uuid"),
+                        "user_name": user.get("user_name"),
+                    }
+                )
+        if temp_list:
+            legalserver_task.users = temp_list
+        del temp_list
 
-    if task_data.get("dynamic_process") is not None:
+    if task_data.get("dynamic_process") is not None and isinstance(
+        task_data.get("dynamic_process"), dict
+    ):
         if task_data["dynamic_process"].get("dynamic_process_id") is not None:
             legalserver_task.dynamic_process_id = task_data["dynamic_process"].get(
                 "dynamic_process_id"
@@ -4185,14 +4620,17 @@ def populate_task_data(
         )
     if task_data.get("created_date") is not None:
         legalserver_task.created_date = task_data.get("created_date")
-    if task_data.get("created_by") is not None:
+    if task_data.get("created_by") is not None and isinstance(
+        task_data["created_by"], dict
+    ):
         if task_data["created_by"].get("user_uuid") is not None:
             legalserver_task.created_by_uuid = task_data["created_by"].get("user_uuid")
         if task_data["created_by"].get("user_name") is not None:
             legalserver_task.created_by_name = task_data["created_by"].get("user_name")
-    if task_data["program"].get("lookup_value_name") is not None:
-        legalserver_task.program = task_data["program"].get("lookup_value_name")
-    if task_data.get("office") is not None:
+    if task_data.get("program") is not None and isinstance(task_data["program"], dict):
+        if task_data["program"].get("lookup_value_name") is not None:
+            legalserver_task.program = task_data["program"].get("lookup_value_name")
+    if task_data.get("office") is not None and isinstance(task_data["office"], dict):
         if task_data["office"].get("office_name") is not None:
             legalserver_task.office_name = task_data["office"].get("office_name")
         if task_data["office"].get("office_code") is not None:
@@ -4204,6 +4642,8 @@ def populate_task_data(
     }
     if custom_fields is not None:
         legalserver_task.custom_fields = custom_fields
+    else:
+        legalserver_task.custom_fields = {}
     del custom_fields
 
     return legalserver_task
@@ -4296,30 +4736,33 @@ def populate_user_data(*, user: Individual, user_data: Dict) -> Individual:
         user.need_password_change_next_login = user_data.get(
             "need_password_change_next_login"
         )
-
-    temp_list = []
-    for type in user_data["types"]:
-        if type.get("lookup_value_name") is not None:
-            temp_list.append(type.get("lookup_value_name"))
-    if temp_list:
-        user.types = temp_list
-    del temp_list
-
-    if user_data["role"].get("lookup_value_name") is not None:
-        user.role = user_data["role"].get("lookup_value_name")
-
-    if user_data["gender"].get("lookup_value_name") is not None:
-        user.role = user_data["gender"].get("lookup_value_name")
-
-    if user_data["race"].get("lookup_value_name") is not None:
-        user.role = user_data["race"].get("lookup_value_name")
+    if user_data.get("types") is not None and isinstance(user_data.get("types"), list):
+        temp_list = []
+        for type in user_data["types"]:
+            if type.get("lookup_value_name") is not None:
+                temp_list.append(type.get("lookup_value_name"))
+        if temp_list:
+            user.types = temp_list
+        del temp_list
+    if user_data.get("role") is not None and isinstance(user_data["role"], dict):
+        if user_data["role"].get("lookup_value_name") is not None:
+            user.role = user_data["role"].get("lookup_value_name")
+    if user_data.get("gender") is not None and isinstance(user_data["gender"], dict):
+        if user_data["gender"].get("lookup_value_name") is not None:
+            user.gender = user_data["gender"].get("lookup_value_name")
+    if user_data.get("race") is not None and isinstance(user_data.get("race"), dict):
+        if user_data["race"].get("lookup_value_name") is not None:
+            user.race = user_data["race"].get("lookup_value_name")
     if user_data.get("dob") is not None:
         user.birthdate = user_data.get("dob")
-    if user_data.get("office") is not None:
+    if user_data.get("office") is not None and isinstance(
+        user_data.get("office"), dict
+    ):
         if user_data["office"].get("office_name") is not None:
             user.office = user_data.get("office")
-    if user_data["program"].get("lookup_value_name") is not None:
-        user.program = user_data["program"].get("lookup_value_name")
+    if user_data.get("program") is not None and isinstance(user_data["program"], dict):
+        if user_data["program"].get("lookup_value_name") is not None:
+            user.program = user_data["program"].get("lookup_value_name")
     if user_data.get("date_start") is not None:
         user.date_start = user_data.get("date_start")
     if user_data.get("date_end") is not None:
@@ -4335,39 +4778,44 @@ def populate_user_data(*, user: Individual, user_data: Dict) -> Individual:
         user.date_joined_panel = user_data.get("date_joined_panel")
     if user_data.get("external_unique_id") is not None:
         user.external_unique_id = user_data.get("external_unique_id")
-
-    temp_list = []
-    for program in user_data["additional_programs"]:
-        if program.get("lookup_value_name") is not None:
-            temp_list.append(program.get("lookup_value_name"))
-    if temp_list:
-        user.additional_programs = temp_list
-    del temp_list
+    if user_data.get("additional_programs") is not None and isinstance(
+        user_data["additional_programs"], list
+    ):
+        temp_list = []
+        for program in user_data["additional_programs"]:
+            if program.get("lookup_value_name") is not None:
+                temp_list.append(program.get("lookup_value_name"))
+        if temp_list:
+            user.additional_programs = temp_list
+        del temp_list
 
     if user_data.get("additional_offices") is not None:
-        user.additional_offices = user_data.get("additional_offices")
-
-    temp_list = []
-    for office in user_data["additional_offices"]:
-        if office.get("office_name") is not None:
-            temp_list.append(office.get("office_name"))
-    if temp_list:
-        user.additional_offices = temp_list
-    del temp_list
+        if isinstance(user_data["additional_offices"], list):
+            temp_list = []
+            for office in user_data["additional_offices"]:
+                if office.get("office_name") is not None:
+                    temp_list.append(office.get("office_name"))
+            if temp_list:
+                user.additional_offices = temp_list
+            del temp_list
+        else:
+            user.additional_offices = user_data.get("additional_offices")
 
     if user_data.get("external_guid") is not None:
         user.external_guid = user_data.get("external_guid")
 
     if user_data.get("highest_court_admitted") is not None:
         user.highest_court_admitted = user_data.get("highest_court_admitted")
-
-    temp_list = []
-    for language in user_data["languages"]:
-        if language.get("lookup_value_name") is not None:
-            temp_list.append(language.get("lookup_value_name"))
-    if temp_list:
-        user.languages = temp_list
-    del temp_list
+    if user_data.get("languages") is not None and isinstance(
+        user_data["languages"], list
+    ):
+        temp_list = []
+        for language in user_data["languages"]:
+            if language.get("lookup_value_name") is not None:
+                temp_list.append(language.get("lookup_value_name"))
+        if temp_list:
+            user.languages = temp_list
+        del temp_list
 
     if user_data.get("phone_business") is not None:
         user.phone_business = user_data.get("phone_business")
@@ -4384,12 +4832,18 @@ def populate_user_data(*, user: Individual, user_data: Dict) -> Individual:
             user.preferred_phone = user_data["preferred_phone"].get("lookup_value_name")
     if user_data.get("practice_state") is not None:
         user.practice_state = user_data.get("practice_state")
-    if user_data["member_good_standing"].get("lookup_value_name") is not None:
-        user.member_good_standing = user_data["member_good_standing"].get(
-            "lookup_value_name"
-        )
-    if user_data["recruitment"].get("lookup_value_name") is not None:
-        user.recruitment = user_data["recruitment"].get("lookup_value_name")
+    if user_data.get("member_good_standing") is not None and isinstance(
+        user_data["member_good_standing"], dict
+    ):
+        if user_data["member_good_standing"].get("lookup_value_name") is not None:
+            user.member_good_standing = user_data["member_good_standing"].get(
+                "lookup_value_name"
+            )
+    if user_data.get("recruitment") is not None and isinstance(
+        user_data["recruitment"], dict
+    ):
+        if user_data["recruitment"].get("lookup_value_name") is not None:
+            user.recruitment = user_data["recruitment"].get("lookup_value_name")
     if user_data.get("salutation") is not None:
         user.salutation_to_use = user_data.get("salutation")
     if user_data.get("school_attended") is not None:
@@ -4401,17 +4855,20 @@ def populate_user_data(*, user: Individual, user_data: Dict) -> Individual:
     if user_data.get("hourly_rate") is not None:
         user.hourly_rate = user_data.get("hourly_rate")
 
-    temp_list = []
-    temp_list2 = []
-    for county in user_data["counties"]:
-        if county.get("lookup_value_name") is not None:
-            temp_list.append(county.get("lookup_value_name"))
-            temp_list2.append(county.get("lookup_value_FIPS"))
-    if temp_list:
-        user.counties = temp_list
-        user.counties_FIPS = temp_list2
-    del temp_list
-    del temp_list2
+    if user_data.get("counties") is not None and isinstance(
+        user_data["counties"], list
+    ):
+        temp_list = []
+        temp_list2 = []
+        for county in user_data["counties"]:
+            if county.get("lookup_value_name") is not None:
+                temp_list.append(county.get("lookup_value_name"))
+                temp_list2.append(county.get("lookup_value_FIPS"))
+        if temp_list:
+            user.counties = temp_list
+            user.counties_FIPS = temp_list2
+        del temp_list
+        del temp_list2
 
     if user_data.get("contact_types") is not None:
         user.contact_types = user_data.get("contact_types")
@@ -4425,23 +4882,31 @@ def populate_user_data(*, user: Individual, user_data: Dict) -> Individual:
     if user_data.get("address_mailing") is not None:
         user.address_mailing = user_data.get("address_mailing")
 
-    temp_list = []
-    for type in user_data["contractor_assignment_types"]:
-        if type.get("lookup_value_name") is not None:
-            temp_list.append(type.get("lookup_value_name"))
-    if temp_list:
-        user.contractor_assignment_types = temp_list
-    del temp_list
+    if user_data.get("contractor_assignment_types") is not None and isinstance(
+        user_data["contractor_assignment_types"], list
+    ):
+        temp_list = []
+        for type in user_data["contractor_assignment_types"]:
+            if type.get("lookup_value_name") is not None:
+                temp_list.append(type.get("lookup_value_name"))
+        if temp_list:
+            user.contractor_assignment_types = temp_list
+        del temp_list
 
-    temp_list = []
-    for affiliation in user_data["organization_affiliations"]:
-        temp_list.append(affiliation)
-    if temp_list:
-        user.organization_affiliations = temp_list
-    del temp_list
+    if user_data.get("organization_affiliations") is not None and isinstance(
+        user_data["organization_affiliations"], list
+    ):
+        temp_list = []
+        for affiliation in user_data["organization_affiliations"]:
+            temp_list.append(affiliation)
+        if temp_list:
+            user.organization_affiliations = temp_list
+        del temp_list
 
     # Work Address
-    if user_data.get("address_work") is not None:
+    if user_data.get("address_work") is not None and isinstance(
+        user_data["address_work"], dict
+    ):
         if user_data["address_work"].get("street") is not None:
             user.address.address = user_data["address_work"].get("street")
         ## LS Supports both Apt Num and Street2
@@ -4472,7 +4937,9 @@ def populate_user_data(*, user: Individual, user_data: Dict) -> Individual:
             user.address.zip = user_data["address_work"].get("zip")
 
     # Home Address
-    if user_data.get("address_home") is not None:
+    if user_data.get("address_home") is not None and isinstance(
+        user_data["address_home"], dict
+    ):
         if (
             user_data["address_home"].get("street") is not None
             or user_data["address_home"].get("apt_num") is not None
@@ -4514,7 +4981,9 @@ def populate_user_data(*, user: Individual, user_data: Dict) -> Individual:
 
     # Mailing Address
 
-    if user_data.get("address_mailing") is not None:
+    if user_data.get("address_mailing") is not None and isinstance(
+        user_data["address_mailing"], dict
+    ):
         if (
             user_data["address_mailing"].get("street") is not None
             or user_data["address_mailing"].get("apt_num") is not None
@@ -4556,7 +5025,9 @@ def populate_user_data(*, user: Individual, user_data: Dict) -> Individual:
         if user_data["address_mailing"].get("zip") is not None:
             user.mailing_address.zip = user_data["address_mailing"].get("zip")
 
-    if user_data.get("dynamic_process") is not None:
+    if user_data.get("dynamic_process") is not None and isinstance(
+        user_data["dynamic_process"], dict
+    ):
         user.dynamic_process_id = user_data["dynamic_process"].get("dynamic_process_id")
         user.dynamic_process_uuid = user_data["dynamic_process"].get(
             "dynamic_process_uuid"
@@ -4564,9 +5035,6 @@ def populate_user_data(*, user: Individual, user_data: Dict) -> Individual:
         user.dynamic_process_name = user_data["dynamic_process"].get(
             "dynamic_process_name"
         )
-
-    if user_data.get("organization_affiliation") is not None:
-        user.organization = 1
 
     if user_data.get("vendor_id") is not None:
         user.vendor_id = user_data.get("vendor_id")
@@ -4587,6 +5055,8 @@ def populate_user_data(*, user: Individual, user_data: Dict) -> Individual:
     }
     if custom_fields is not None:
         user.custom_fields = custom_fields
+    else:
+        user.custom_fields = {}
     del custom_fields
 
     return user
@@ -5875,192 +6345,190 @@ def standard_matter_keys() -> List[str]:
         A list of strings.
     """
     standard_matter_keys = [
-        "case_number",
-        "case_id",
-        "matter_uuid",
-        "external_id",
-        "cause_number",
-        "case_email_address",
-        "case_title",
-        "client_id",
-        "client_full_name",
-        "first",
-        "last",
-        "middle",
-        "suffix",
-        "is_group",
-        "organization_name",
-        "client_email_address",
-        "case_disposition",
-        "is_this_a_prescreen",
-        "prescreen_date",
-        "prescreen_user",
-        "prescreen_program",
-        "prescreen_office",
-        "intake_office",
-        "intake_program",
-        "intake_user",
-        "prescreen_screening_status",
-        "client_address_home",
-        "client_address_mailing",
-        "date_opened",
-        "date_closed",
-        "intake_date",
-        "date_rejected",
-        "rejected",
-        "client_gender",
-        "veteran",
-        "disabled",
-        "preferred_phone_number",
-        "home_phone",
-        "mobile_phone",
-        "other_phone",
-        "work_phone",
-        "fax_phone",
-        "language",
-        "second_language",
-        "languages",
-        "preferred_written_language",
-        "preferred_spoken_language",
-        "interpreter",
-        "county_of_residence",
-        "county_of_dispute",
-        "legal_problem_code",
-        "legal_problem_category",
-        "special_legal_problem_code",
-        "intake_type",
-        "impact",
-        "special_characteristics",
-        "marital_status",
-        "citizenship",
-        "citizenship_country",
-        "immigration_status",
         "a_number",
-        "visa_number",
-        "date_of_birth",
-        "ssn",
-        "case_status",
-        "close_reason",
-        "case_profile_url",
-        "pro_bono_opportunity_summary",
-        "pro_bono_opportunity_county",
-        "pro_bono_opportunity_note",
-        "pro_bono_opportunity_available_date",
-        "pro_bono_opportunity_placement_date",
-        "pro_bono_engagement_type",
-        "pro_bono_time_commitment",
-        "pro_bono_urgent",
-        "pro_bono_interest_cc",
-        "pro_bono_skills_developed",
-        "pro_bono_appropriate_volunteer",
-        "pro_bono_expiration_date",
-        "pro_bono_opportunity_status",
-        "pro_bono_opportunity_cc",
-        "simplejustice_opportunity_legal_topic",
-        "simplejustice_opportunity_helped_community",
-        "simplejustice_opportunity_skill_type",
-        "simplejustice_opportunity_community",
-        "level_of_expertise",
-        "days_open",
-        "percentage_of_poverty",
+        "additional_assistance",
+        "additional_names",
+        "adverse_parties",
+        "adverse_party_conflict_status",
+        "api_integration_preference",
+        "ap_conflict_waived",
+        "asset_assistance",
         "asset_eligible",
-        "lsc_eligible",
-        "income_eligible",
-        "race",
-        "ethnicity",
-        "current_living_situation",
-        "victim_of_domestic_violence",
-        "how_referred",
-        "number_of_adults",
-        "number_of_children",
+        "assignments",
+        "associated_cases",
         "birth_city",
         "birth_country",
-        "drivers_license",
-        "highest_education",
-        "home_phone_note",
-        "work_phone_note",
-        "mobile_phone_note",
-        "other_phone_note",
-        "fax_phone_note",
-        "case_restrictions",
+        "case_disposition",
+        "case_email_address",
         "case_exclusions",
-        "exclude_from_search_results",
+        "case_id",
+        "case_number",
+        "case_profile_url",
+        "case_restrictions",
+        "case_status",
+        "case_title",
+        "cause_number",
+        "charges",
+        "citizenship",
+        "citizenship_country",
+        "client_address_home",
+        "client_address_mailing",
+        "client_approved_transfer",
+        "client_conflict_status",
+        "client_email_address",
+        "client_full_name",
+        "client_gender",
+        "client_id",
+        "close_reason",
         "conflict_status_note",
         "conflict_status_note_ap",
-        "client_conflict_status",
-        "adverse_party_conflict_status",
         "conflict_waived",
-        "ap_conflict_waived",
-        "ssi_welfare_status",
-        "ssi_months_client_has_received_welfare_payments",
-        "ssi_welfare_case_num",
-        "ssi_section8_housing_type",
-        "ssi_eatra",
-        "referring_organizations",
-        "additional_assistance",
-        "pai_case",
-        "institutionalized",
-        "institutionalized_at",
-        "client_approved_transfer",
-        "transfer_reject_reason",
-        "transfer_reject_notes",
-        "prior_client",
-        "priorities",
-        "asset_assistance",
+        "contacts",
+        "contractor_work_orders",
+        "country_of_origin",
+        "county_of_dispute",
+        "county_of_residence",
+        "court_tracking_numbers",
+        "created_by_integration_or_api",
+        "current_living_situation",
+        "date_closed",
+        "date_of_appointment_retention",
+        "date_of_birth",
+        "date_opened",
+        "date_rejected",
+        "days_open",
+        "disabled",
+        "dob_status",
+        "documents",
+        "drivers_license",
+        "dropbox_folder_id",
+        "dynamic_process",
+        "employment_status",
+        "ethnicity",
+        "events",
+        "exclude_from_search_results",
+        "external_id",
+        "fax_phone",
+        "fax_phone_note",
         "fee_generating",
-        "rural",
-        "pro_bono_opportunity_guardian_ad_litem_certification_needed",
-        "pro_bono_opportunity_summary_of_upcoming_dates",
-        "pro_bono_opportunity_summary_of_work_needed",
-        "pro_bono_opportunity_special_issues",
-        "pro_bono_opportunity_court_and_filing_fee_information",
-        "pro_bono_opportunity_paupers_eligible",
-        "is_lead_case",
-        "lead_case",
+        "first",
+        "google_drive_folder_id",
+        "highest_education",
+        "home_phone",
+        "home_phone_note",
+        "how_referred",
+        "hud_ami_category",
+        "hud_area_median_income_percentage",
+        "hud_entity_poverty_band",
+        "hud_statewide_median_income_percentage",
+        "hud_statewide_poverty_band",
+        "impact",
+        "immigration_status",
         "income_change_significantly",
         "income_change_type",
-        "hud_entity_poverty_band",
-        "hud_statewide_poverty_band",
-        "hud_statewide_median_income_percentage",
-        "hud_area_median_income_percentage",
-        "hud_ami_category",
-        "school_status",
-        "employment_status",
-        "military_service",
-        "sharepoint_site_library",
-        "sending_site_identification_number",
-        "associated_cases",
-        "dynamic_process",
-        "assignments",
-        "charges",
-        "contacts",
-        "services",
-        "litigations",
+        "income_eligible",
         "incomes",
-        "events",
-        "notes",
-        "adverse_parties",
-        "non_adverse_parties",
-        "additional_names",
-        "tasks",
-        "external_id",
-        "documents",
-        "created_by_integration_or_api",
+        "institutionalized",
+        "institutionalized_at",
+        "intake_date",
+        "intake_office",
+        "intake_program",
+        "intake_type",
+        "intake_user",
+        "interpreter",
+        "is_group",
+        "is_lead_case",
+        "is_this_a_prescreen",
+        "language",
+        "languages",
+        "last",
+        "lead_case",
+        "legal_problem_category",
+        "legal_problem_code",
+        "level_of_expertise",
+        "litigations",
+        "lsc_eligible",
+        "marital_status",
+        "matter_uuid",
+        "middle",
+        "military_service",
+        "military_status",
+        "mobile_phone",
+        "mobile_phone_note",
         "modified_by_integration_or_api",
+        "non_adverse_parties",
+        "notes",
+        "number_of_adults",
+        "number_of_children",
+        "online_intake_payload",
+        "organization_name",
+        "other_phone",
+        "other_phone_note",
+        "pai_case",
+        "percentage_of_poverty",
+        "preferred_phone_number",
         "preferred_spoken_language",
         "preferred_written_language",
-        "contractor_work_orders",
-        "trial_date",
-        "date_of_appointment_retention",
-        "country_of_origin",
-        "dob_status",
-        "ssn_status",
-        "court_tracking_numbers",
-        "api_integration_preference",
+        "prescreen_date",
+        "prescreen_office",
+        "prescreen_program",
+        "prescreen_screening_status",
+        "prescreen_user",
+        "priorities",
+        "prior_client",
+        "pro_bono_appropriate_volunteer",
+        "pro_bono_engagement_type",
+        "pro_bono_expiration_date",
+        "pro_bono_interest_cc",
+        "pro_bono_opportunity_available_date",
+        "pro_bono_opportunity_cc",
+        "pro_bono_opportunity_county",
+        "pro_bono_opportunity_court_and_filing_fee_information",
+        "pro_bono_opportunity_guardian_ad_litem_certification_needed",
+        "pro_bono_opportunity_note",
+        "pro_bono_opportunity_paupers_eligible",
+        "pro_bono_opportunity_placement_date",
+        "pro_bono_opportunity_special_issues",
+        "pro_bono_opportunity_status",
+        "pro_bono_opportunity_summary",
+        "pro_bono_opportunity_summary_of_upcoming_dates",
+        "pro_bono_opportunity_summary_of_work_needed",
+        "pro_bono_skills_developed",
+        "pro_bono_time_commitment",
+        "pro_bono_urgent",
+        "race",
+        "referring_organizations",
+        "rejected",
+        "rural",
+        "school_status",
+        "second_language",
+        "sending_site_identification_number",
+        "services",
+        "sharepoint_site_library",
         "sharepoint_tracer_document_id",
-        "google_drive_folder_id",
-        "dropbox_folder_id",
-        "military_status",
+        "simplejustice_opportunity_community",
+        "simplejustice_opportunity_helped_community",
+        "simplejustice_opportunity_legal_topic",
+        "simplejustice_opportunity_skill_type",
+        "special_characteristics",
+        "special_legal_problem_code",
+        "ssi_eatra",
+        "ssi_months_client_has_received_welfare_payments",
+        "ssi_section8_housing_type",
+        "ssi_welfare_case_num",
+        "ssi_welfare_status",
+        "ssn",
+        "ssn_status",
+        "suffix",
+        "tasks",
+        "transfer_reject_notes",
+        "transfer_reject_reason",
+        "trial_date",
+        "veteran",
+        "victim_of_domestic_violence",
+        "visa_number",
+        "work_phone",
+        "work_phone_note",
     ]
     return standard_matter_keys
 

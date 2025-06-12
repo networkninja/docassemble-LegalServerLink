@@ -212,7 +212,7 @@ code: |
 code: |
   raise_errors_getting_legalserver_data
   populate_associated_cases(associated_case_list=legalserver_associated_cases, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
-  parse_legalserver_associated_cases_data = True
+  parse_legalserver_associated_cases_data = True  
 ---
 code: |
   raise_errors_getting_legalserver_data
