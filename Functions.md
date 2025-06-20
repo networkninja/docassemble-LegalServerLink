@@ -71,6 +71,7 @@ API. This returns the json dictionary of the data returned by the API.
 * `search_additional_name_params` - optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## get_case_adverse_parties
 
@@ -86,6 +87,7 @@ API. This returns the json dictionary of the data returned by the API.
 * `search_adverse_party_params` - optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## get_case_assignments
 
@@ -101,6 +103,7 @@ API. This returns the json dictionary of the data returned by the API.
 * `search_assignment_params` - optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## get_case_charges
 
@@ -116,6 +119,7 @@ API. This returns the json dictionary of the data returned by the API.
 * `search_charge_params` - optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## get_case_contacts
 
@@ -131,6 +135,7 @@ API. This returns the json dictionary of the data returned by the API.
 * `search_contact_params` - optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## get_case_documents
 
@@ -146,6 +151,7 @@ API. This returns the json dictionary of the data returned by the API.
 * `search_document_params` - optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## get_case_events
 
@@ -161,6 +167,7 @@ API. This returns the json dictionary of the data returned by the API.
 * `search_event_params` - optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## get_case_litigations
 
@@ -176,6 +183,7 @@ API. This returns the json dictionary of the data returned by the API.
 * `search_litigation_params` - optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## get_case_non_adverse_parties
 
@@ -191,6 +199,7 @@ API. This returns the json dictionary of the data returned by the API.
 * `search_non_adverse_party_params` - optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## get_case_notes
 
@@ -206,6 +215,7 @@ API. This returns the json dictionary of the data returned by the API.
 * `search_note_params` - optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## get_case_services
 
@@ -221,6 +231,7 @@ API. This returns the json dictionary of the data returned by the API.
 * `search_service_params` - optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## get_case_tasks
 
@@ -236,6 +247,7 @@ API. This returns the json dictionary of the data returned by the API.
 * `search_task_params` - optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## get_documents
 
@@ -305,6 +317,7 @@ API. This returns the json dictionary of the data returned by the API.
 * `custom_fields_litigations` - optional python list of string values
 * `custom_fields_services` - optional python list of string values
 * `sort` - optional string to sort the results
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## get_organization_details
 
@@ -318,6 +331,7 @@ API endpoint. This returns the json dictionary of the data returned by the API.
 * `legalserver_site` - required
 * `legalserver_organization_uuid` - required
 * `custom_fields` - optional python list of string values
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## get_task_details
 
@@ -334,6 +348,7 @@ task on.
 to retrieve.
 * `custom_fields` (list) - A optional list of custom fields to include.
 * `sort` (str) - Optional string to sort the results by. Defaults to ASC.
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## get_user_details
 
@@ -853,6 +868,7 @@ API endpoint. This returns the json list of the data returned by the API.
 * `custom_fields` - optional python list of string values
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## search_matter_additional_name_data
 
@@ -867,6 +883,7 @@ API endpoint. This returns the json list of the data returned by the API.
 * `matter_additional_names_search_params` - Optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## search_matter_adverse_parties
 
@@ -882,6 +899,7 @@ API endpoint. This returns the json list of the data returned by the API.
 parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## search_matter_assignment_data
 
@@ -896,6 +914,7 @@ API endpoint. This returns the json list of the data returned by the API.
 * `matter_assignment_search_params` - optional python dictionary of filters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## search_matter_charges_data
 
@@ -910,6 +929,7 @@ API endpoint. This returns the json list of the data returned by the API.
 * `charges_search_params` - Optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## search_matter_contacts_data
 
@@ -924,6 +944,7 @@ API endpoint. This returns the json list of the data returned by the API.
 * `matter_contact_search_params` - Optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## search_matter_litigation_data
 
@@ -938,6 +959,7 @@ API endpoint. This returns the json list of the data returned by the API.
 * `litigation_search_params` - Optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## search_matter_non_adverse_parties
 
@@ -953,6 +975,7 @@ API endpoint. This returns the json list of the data returned by the API.
 parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## search_matter_notes_data
 
@@ -969,6 +992,7 @@ API endpoint. They are returned as a list of notes.
 * `search_note_params` - Optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## search_matter_services_data
 
@@ -983,6 +1007,7 @@ API endpoint. This returns the json list of the data returned by the API.
 * `services_search_params` - Optional dictionary of search parameters
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## search_organization_data
 
@@ -998,6 +1023,7 @@ API endpoint. This returns the json list of the data returned by the API.
 * `custom_fields` - optional python list of string values
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## search_user_data
 
@@ -1013,6 +1039,7 @@ API endpoint. This returns the json list of the data returned by the API.
 * `custom_fields` - optional python list of string values
 * `sort` - optional string to sort the results
 * `page_limit` - optional limit to the number of pages returned
+* `custom_results` - an optional list of field names to limit the response to.
 
 ## search_user_organization_affiliation
 

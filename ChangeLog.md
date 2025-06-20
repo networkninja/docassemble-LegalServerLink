@@ -41,6 +41,15 @@ Format:
 ### Security
 - 
 -->
+## [1.2.3]
+
+### Added
+
+* Support added for the `custom_results` parameter. This required moving many
+fields behind a check to make sure they are not `None`. If there are minimum
+required fields that are erroring, defaults can be added in the future.
+* Added support for the User `supervisors` and `supervisees` parameters.
+
 ## [1.2.2]
 
 ### Added

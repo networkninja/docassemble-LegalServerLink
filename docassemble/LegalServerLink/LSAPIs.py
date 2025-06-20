@@ -28,6 +28,7 @@ from typing import Dict, List, Union, Optional, Any
 
 __all__ = [
     "check_custom_fields",
+    "check_for_valid_fields",
     "check_legalserver_token",
     "count_of_pro_bono_assignments",
     "country_code_from_name",
@@ -103,6 +104,7 @@ __all__ = [
     "standard_services_keys",
     "standard_task_keys",
     "standard_user_keys",
+    "check_for_valid_fields",
 ]
 
 
@@ -134,6 +136,74 @@ def check_custom_fields(response_obj):
 
     # Return whether custom fields exist and the list of custom field keys
     return bool(custom_keys), custom_keys
+
+
+def check_for_valid_fields(*, source_list: list, module: str) -> bool:
+    """Checks whether the list provided meets the following criteria:
+    1. Is a valid list (use the has_valid_items function) of strings
+    2. All the strings either match the standard keys present for a module (like standard_matter_keys() for matters) or
+    are valid custom fields with the format of `custom_field_name_1`, `custom_field_name_2`, etc.
+
+    Args:
+        source_list (list): The list of field names to check
+        module (str): The module type to check against (e.g., 'matter', 'contact', 'task', etc.)
+
+    Returns:
+        bool: True if all fields are valid, False otherwise
+    """
+    # First check if the list is valid
+    if not has_valid_items(source_list):
+        return False
+
+    # Get the appropriate standard keys based on the module
+    standard_keys = []
+    if module.lower() == "matters":
+        standard_keys = standard_matter_keys()
+    elif module.lower() == "contacts":
+        standard_keys = standard_contact_keys()
+    elif module.lower() == "events":
+        standard_keys = standard_event_keys()
+    elif module.lower() == "tasks":
+        standard_keys = standard_task_keys()
+    elif module.lower() == "documents":
+        standard_keys = standard_document_keys()
+    elif module.lower() == "organizations":
+        standard_keys = standard_organization_keys()
+    elif module.lower() == "organization_affiliations":
+        standard_keys = standard_organization_affiliation_keys()
+    elif module.lower() == "services":
+        standard_keys = standard_services_keys()
+    elif module.lower() == "litigations":
+        standard_keys = standard_litigation_keys()
+    elif module.lower() == "charges":
+        standard_keys = standard_charges_keys()
+    elif module.lower() == "adverse_parties":
+        standard_keys = standard_adverse_party_keys()
+    elif module.lower() == "non_adverse_parties":
+        standard_keys = standard_non_adverse_party_keys()
+    else:
+        log(f"Unknown module type: {module}. Cannot check for valid fields.")
+        raise ValueError(
+            f"Unknown module type: {module}. Cannot check for valid fields."
+        )
+    # Check each field in the source list
+    for field in source_list:
+        # Skip empty strings - already checked by has_valid_items
+        if not field.strip():
+            continue
+
+        # Check if it's a standard field
+        if field in standard_keys:
+            continue
+        else:
+            # If not a standard field, check if it's a valid custom field format
+            # Custom fields should follow pattern like custom_field_name_1
+            pattern = re.compile(r"^[a-zA-Z0-9_]+_\d+$")
+            if not pattern.search(field):
+                # Not a standard field or properly formatted custom field
+                return False
+
+    return True
 
 
 def check_legalserver_token(*, legalserver_site: str) -> Dict:
@@ -261,6 +331,7 @@ def get_contact_details(
     legalserver_site: str,
     legalserver_contact_uuid: str,
     custom_fields: list | None = None,
+    custom_results: list = [],
 ) -> Dict:
     """Get details about a specific Contact record in LegalServer.
 
@@ -273,6 +344,7 @@ def get_contact_details(
         legalserver_contact_uuid (dict): The UUID of the specific LegalServer
             contact to retrieve
         custom_fields (list): A optional list of custom fields to include.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A dictionary for the specific contact.
@@ -290,6 +362,10 @@ def get_contact_details(
     if custom_fields:
         if has_valid_items(custom_fields):
             queryparam_data["custom_fields"] = format_field_list(custom_fields)
+
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="contacts"):
+            queryparam_data["custom_results"] = format_field_list(custom_results)
 
     return_data = get_legalserver_response(
         url=url,
@@ -349,6 +425,7 @@ def get_event_details(
     legalserver_event_uuid: str,
     custom_fields: list | None = None,
     sort: str | None = None,
+    custom_results: list = [],
 ) -> Dict:
     """Get details about a specific Event record in LegalServer.
 
@@ -362,6 +439,7 @@ def get_event_details(
             event to retrieve
         custom_fields (list): A optional list of custom fields to include.
         sort (str): Optional string to sort the results by. Defaults to ASC.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A dictionary for the event record.
@@ -382,6 +460,10 @@ def get_event_details(
 
     if sort in {"asc", "desc"}:
         queryparam_data["sort"] = sort
+
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="events"):
+            queryparam_data["custom_results"] = format_field_list(custom_results)
 
     return_data = get_legalserver_response(
         url=url,
@@ -404,6 +486,7 @@ def get_matter_details(
     custom_fields_litigations: list[str] | None = None,
     custom_fields_charges: list[str] | None = None,
     sort: str | None = None,
+    custom_results: list = [],
 ) -> Dict:
     """This function gets the Details of a LegalServer matter using the Get
     Matters endpoint.
@@ -420,6 +503,7 @@ def get_matter_details(
         custom_fields_litigations (list[str]): optional python list of string values
         custom_fields_services (list[str]): optional python list of string values
         sort (str): optional string to sort the results by. Defaults to ASC.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A dictionary of the LegalServer Matter details.
@@ -457,6 +541,15 @@ def get_matter_details(
                 custom_fields_services
             )
 
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="matters"):
+            queryparam_data["custom_results"] = format_field_list(custom_results)
+
+    if sort == "asc":
+        queryparam_data["sort"] = "asc"
+    elif sort == "desc":
+        queryparam_data["sort"] = "desc"
+
     # Construct the full URL with custom fields in the query string
     url = base_url
 
@@ -477,6 +570,7 @@ def get_organization_details(
     legalserver_organization_uuid: str,
     custom_fields: list | None = None,
     sort: str | None = None,
+    custom_results: list = [],
 ) -> Dict:
     """This returns information about a specific Organization in LegalServer.
 
@@ -490,6 +584,7 @@ def get_organization_details(
             organization to retrieve
         custom_fields (list): A optional list of custom fields to include.
         sort (str): Optional string to sort the results by. Defaults to ASC.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A dictionary for the specific organization.
@@ -509,6 +604,10 @@ def get_organization_details(
     if custom_fields:
         if has_valid_items(custom_fields):
             queryparam_data["custom_fields"] = format_field_list(custom_fields)
+
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="organizations"):
+            queryparam_data["custom_results"] = format_field_list(custom_results)
 
     if sort == "asc":
         queryparam_data["sort"] = "asc"
@@ -533,6 +632,7 @@ def get_task_details(
     legalserver_task_uuid: str,
     custom_fields: list | None = None,
     sort: str | None = None,
+    custom_results: list = [],
 ) -> Dict:
     """This returns information about a specific Task in LegalServer.
 
@@ -546,6 +646,7 @@ def get_task_details(
             task to retrieve
         custom_fields (list): A optional list of custom fields to include.
         sort (str): Optional string to sort the results by. Defaults to ASC.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A dictionary for the specific task.
@@ -565,6 +666,10 @@ def get_task_details(
     if custom_fields:
         if has_valid_items(custom_fields):
             queryparam_data["custom_fields"] = format_field_list(custom_fields)
+
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="tasks"):
+            queryparam_data["custom_results"] = format_field_list(custom_results)
 
     if sort == "asc":
         queryparam_data["sort"] = "asc"
@@ -588,6 +693,8 @@ def get_user_details(
     legalserver_site: str,
     legalserver_user_uuid: str,
     custom_fields: list | None = None,
+    custom_results: list = [],
+    sort: str | None = None,
 ) -> Dict:
     """Get Details on a specific LegalServer user.
 
@@ -602,6 +709,7 @@ def get_user_details(
         legalserver_site (str): required
         legalserver_user_uuid (str): required
         custom_fields (list): Optional list to include any custom fields
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A dictionary with the specific user data."""
@@ -614,6 +722,14 @@ def get_user_details(
     if custom_fields:
         if has_valid_items(custom_fields):
             queryparam_data["custom_fields"] = format_field_list(custom_fields)
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="matters"):
+            queryparam_data["custom_results"] = format_field_list(custom_results)
+
+    if sort == "asc":
+        queryparam_data["sort"] = "asc"
+    elif sort == "desc":
+        queryparam_data["sort"] = "desc"
 
     return_data = get_legalserver_response(
         url=url,
@@ -1235,7 +1351,8 @@ def populate_additional_names(
             # item: DAObject = item # type annotation
             new_name = additional_name_list.appendObject(IndividualName)
             new_name.uuid = item.get("uuid")
-            new_name.id = item.get("id")
+            if item.get("id") is not None:
+                new_name.id = item.get("id")
             if item.get("first") is not None:
                 new_name.first = item.get("first")
             if item.get("middle") is not None:
@@ -1297,7 +1414,8 @@ def populate_adverse_parties(
             # item: DAObject = item # type annotation
             new_ap = adverse_party_list.appendObject(Individual)
             new_ap.uuid = item.get("uuid")
-            new_ap.id = item.get("id")
+            if item.get("id") is not None:
+                new_ap.id = item.get("id")
             if item.get("organization_name") is None:
                 new_ap.initializeAttribute("name", IndividualName)
                 if item.get("first") is not None:
@@ -1495,15 +1613,28 @@ def populate_assignments(
                 # these fields are all required by the application so will never
                 # be null or not present.
                 new_assignment.uuid = item.get("uuid")
-                new_assignment.id = item.get("id")
-                new_assignment.type = item["type"].get("lookup_value_name")
+                # these fields could be null or not present, so we check
+
+                if item.get("id") is not None:
+                    new_assignment.id = item.get("id")
+                if item.get("type") is not None and isinstance(item.get("type"), dict):
+                    if item["type"].get("lookup_value_name") is not None:
+                        new_assignment.type = item["type"].get("lookup_value_name")
+
                 new_assignment.start_date = item.get("start_date")
                 new_assignment.end_date = item.get("end_date")
-                new_assignment.program = item["program"].get("lookup_value_name")
-                new_assignment.user_uuid = item["user"].get("user_uuid")
-                new_assignment.user_name = item["user"].get("user_name")
-
-                # these fields could be null or not present, so we check
+                if item.get("program") is not None and isinstance(
+                    item.get("program"), dict
+                ):
+                    if item["program"].get("lookup_value_name") is not None:
+                        new_assignment.program = item["program"].get(
+                            "lookup_value_name"
+                        )
+                if item.get("user") is not None and isinstance(item.get("user"), dict):
+                    if item["user"].get("user_uuid") is not None:
+                        new_assignment.user_uuid = item["user"].get("user_uuid")
+                    if item["user"].get("user_name") is not None:
+                        new_assignment.user_name = item["user"].get("user_name")
                 if item.get("date_requested") is not None:
                     new_assignment.date_requested = item.get("date_requested")
                 if item.get("confirmed") is not None:
@@ -1577,6 +1708,7 @@ def populate_associated_cases(
                 new_case = associated_case_list.appendObject()
                 new_case.matter = item.get("matter")
                 new_case.matter_uuid = item.get("matter_uuid")
+
                 new_case.matter_identification_number = item.get(
                     "matter_identification_number"
                 )
@@ -1602,17 +1734,28 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
     Returns:
         The populated case object.
     """
-
-    case.case_number = legalserver_data.get("case_number")
-    case.case_id = legalserver_data.get("case_id")
-    case.profile_url = legalserver_data.get("case_profile_url")
-    case.case_disposition = legalserver_data["case_disposition"].get(
-        "lookup_value_name"
-    )
-    case.is_this_a_prescreen = legalserver_data.get("is_this_a_prescreen")
-    case.is_group = legalserver_data.get("is_group")
-    case.email = legalserver_data.get("case_email_address")
-    case.rejected = legalserver_data.get("rejected")
+    case.uuid = legalserver_data.get("uuid")
+    if legalserver_data.get("case_number") is not None:
+        case.case_number = legalserver_data.get("case_number")
+    if legalserver_data.get("case_id") is not None:
+        case.case_id = legalserver_data.get("case_id")
+    if legalserver_data.get("case_profile_url") is not None:
+        case.profile_url = legalserver_data.get("case_profile_url")
+    if legalserver_data.get("case_disposition") is not None and isinstance(
+        legalserver_data.get("case_disposition"), dict
+    ):
+        if legalserver_data["case_disposition"].get("lookup_value_name") is not None:
+            case.case_disposition = legalserver_data["case_disposition"].get(
+                "lookup_value_name"
+            )
+    if legalserver_data.get("is_this_a_prescreen") is not None:
+        case.is_this_a_prescreen = legalserver_data.get("is_this_a_prescreen")
+    if legalserver_data.get("is_group") is not None:
+        case.is_group = legalserver_data.get("is_group")
+    if legalserver_data.get("case_email_address") is not None:
+        case.email = legalserver_data.get("case_email_address")
+    if legalserver_data.get("rejected") is not None:
+        case.rejected = legalserver_data.get("rejected")
     if legalserver_data.get("dynamic_process") is not None and isinstance(
         legalserver_data["dynamic_process"], dict
     ):
@@ -2272,8 +2415,10 @@ def populate_charges(
             if isinstance(item, dict):
                 # item: dict = item  # type annoation
                 new_charge = charge_list.appendObject()
-                new_charge.id = item.get("id")
+
                 new_charge.uuid = item.get("charge_uuid")
+                if item.get("id") is not None:
+                    new_charge.id = item.get("id")
                 if item.get("charge_date") is not None:
                     new_charge.charge_date = item.get("charge_date")
                 if item.get("arraignment_date") is not None:
@@ -2429,6 +2574,7 @@ def populate_client(
     ):
         if legalserver_data["ssn_status"].get("lookup_value_name") is not None:
             client.ssn_status = legalserver_data["ssn_status"].get("lookup_value_name")
+    ## Note this field does not exist in LegalServer's API currently
     if legalserver_data.get("salutation") is not None:
         client.salutation_to_use = legalserver_data.get("salutation")
     if legalserver_data.get("disabled") is not None:
@@ -2978,9 +3124,9 @@ def populate_contact_data(*, contact: Individual, contact_data: dict) -> Individ
             contact.error_message = str(contact_data.get("error"))
             return contact
 
-        contact.id = contact_data.get("id")
         contact.uuid = contact_data.get("contact_uuid")
-
+        if contact_data.get("id") is not None:
+            contact.id = contact_data.get("id")
         if contact_data.get("case_contact_uuid") is not None:
             contact.case_contact_uuid = contact_data.get("case_contact_uuid")
 
@@ -3132,7 +3278,8 @@ def populate_documents(
                 # item: DAObject = item  # type annotation
                 new_document = document_list.appendObject()
                 new_document.uuid = item.get("uuid")
-                new_document.id = item.get("id")
+                if item.get("id") is not None:
+                    new_document.id = item.get("id")
                 if item.get("name") is not None:
                     new_document.name = item.get("name")
                 else:
@@ -3216,8 +3363,9 @@ def populate_event_data(*, event: DAObject, event_data: dict) -> DAObject:
 
     # item: DAObject = item  # type annotation
 
-    event.id = event_data.get("id")
     event.uuid = event_data.get("event_uuid")
+    if event_data.get("id") is not None:
+        event.id = event_data.get("id")
     if event_data.get("title") is not None:
         event.title = event_data.get("title")
     if event_data.get("location") is not None:
@@ -3630,7 +3778,8 @@ def populate_income(
             # item: DAObject = item # type annotation
             new_income = income_list.appendObject()
             new_income.income_uuid = item.get("income_uuid")
-            new_income.id = item.get("id")
+            if item.get("id") is not None:
+                new_income.id = item.get("id")
             if item.get("family_id") is not None:
                 new_income.family_id = item.get("family_id")
             if item.get("other_family") is not None:
@@ -3893,8 +4042,10 @@ def populate_organization_data(
     Returns:
         The supplied Person object.
     """
-    organization.id = organization_data.get("id")
+
     organization.uuid = organization_data.get("uuid")
+    if organization_data.get("id") is not None:
+        organization.id = organization_data.get("id")
     organization.initializeAttribute("name", IndividualName)
     if organization_data.get("name") is not None:
         organization.name.text = organization_data.get("name")
@@ -4036,7 +4187,8 @@ def populate_non_adverse_parties(
             # item: DAObject = item # type annotation
             new_nap = non_adverse_party_list.appendObject(Individual)
             new_nap.uuid = item.get("uuid")
-            new_nap.id = item.get("id")
+            if item.get("id") is not None:
+                new_nap.id = item.get("id")
             if item.get("organization_name") is None:
                 new_nap.initializeAttribute("name", IndividualName)
                 if item.get("first") is not None:
@@ -4257,7 +4409,8 @@ def populate_notes(
                 # item: DAObject = item  # type annotation
                 new_note = note_list.appendObject()
                 new_note.casenote_uuid = item.get("casenote_uuid")
-                new_note.id = item.get("id")
+                if item.get("id") is not None:
+                    new_note.id = item.get("id")
                 if item.get("subject") is not None:
                     new_note.subject = item.get("subject")
                 if item.get("body") is not None:
@@ -4455,9 +4608,10 @@ def populate_services(
             if isinstance(item, dict):
                 # item: DAObject = item  # type annotation
                 new_service = services_list.appendObject()
-                new_service.id = item.get("id")
-                new_service.uuid = item.get("uuid")
 
+                new_service.uuid = item.get("uuid")
+                if item.get("id") is not None:
+                    new_service.id = item.get("id")
                 if item.get("title") is not None:
                     new_service.title = item.get("title")
                 if item.get("start_date") is not None:
@@ -4541,8 +4695,9 @@ def populate_task_data(
     Returns:
         A DAObject of a task record."""
 
-    legalserver_task.id = task_data.get("id")
     legalserver_task.uuid = task_data.get("task_uuid")
+    if task_data.get("id") is not None:
+        legalserver_task.id = task_data.get("id")
     if task_data.get("title") is not None:
         legalserver_task.title = task_data.get("title")
     if task_data.get("list_date") is not None:
@@ -4708,8 +4863,10 @@ def populate_user_data(*, user: Individual, user_data: Dict) -> Individual:
     Returns:
         The user Individual object that was initially supplied.
     """
-    user.id = user_data.get("id")
+
     user.user_uuid = user_data.get("user_uuid")
+    if user_data.get("id") is not None:
+        user.id = user_data.get("id")
     if user_data.get("first") is not None:
         user.name.first = user_data.get("first")
     if user_data.get("middle") is not None:
@@ -5049,6 +5206,63 @@ def populate_user_data(*, user: Individual, user_data: Dict) -> Individual:
     if user_data.get("contact_uuid") is not None:
         user.contact_uuid = user_data.get("contact_uuid")
 
+    if user_data.get("supervisors") is not None and isinstance(
+        user_data["supervisors"], list
+    ):
+        temp_list = []
+        for supervisor in user_data["supervisors"]:
+            temp_object = {}
+            if supervisor.get("supervisor_type") is not None and isinstance(
+                supervisor.get("supervisor_type"), dict
+            ):
+                if supervisor["supervisor_type"].get("lookup_value_name") is not None:
+                    temp_object["supervisor_type"] = supervisor["supervisor_type"].get(
+                        "lookup_value_name"
+                    )
+                else:
+                    temp_object["supervisor_type"] = "Supervisor"
+            temp_object["supervisor_uuid"] = supervisor.get("uuid")
+            if supervisor.get("supervisor") is not None and isinstance(
+                supervisor.get("supervisor"), dict
+            ):
+                if supervisor["supervisor"].get("user_uuid") is not None:
+                    temp_object["user_uuid"] = supervisor["supervisor"].get("user_uuid")
+                if supervisor["supervisor"].get("user_name") is not None:
+                    temp_object["user_name"] = supervisor["supervisor"].get("user_name")
+            temp_list.append(temp_object)
+        if temp_list:
+            user.supervisors = temp_list
+        del temp_list
+
+    if user_data.get("supervisees") is not None and isinstance(
+        user_data["supervisees"], list
+    ):
+        temp_list = []
+        for supervisee in user_data["supervisees"]:
+            temp_object = {}
+            if supervisee.get("supervisor_type") is not None and isinstance(
+                supervisee.get("supervisor_type"), dict
+            ):
+                if supervisee["supervisor_type"].get("lookup_value_name") is not None:
+                    temp_object["supervisor_type"] = supervisee["supervisor_type"].get(
+                        "lookup_value_name"
+                    )
+                else:
+                    temp_object["supervisor_type"] = "Supervisor"
+            temp_object["supervisee_record_uuid"] = supervisee.get("uuid")
+            temp_object["supervisor_record_uuid"] = supervisee.get("supervisor_uuid")
+            if supervisee.get("supervisee") is not None and isinstance(
+                supervisee.get("supervisor"), dict
+            ):
+                if supervisee["supervisee"].get("user_uuid") is not None:
+                    temp_object["user_uuid"] = supervisee["supervisee"].get("user_uuid")
+                if supervisee["supervisee"].get("user_name") is not None:
+                    temp_object["user_name"] = supervisee["supervisee"].get("user_name")
+            temp_list.append(temp_object)
+        if temp_list:
+            user.supervisees = temp_list
+        del temp_list
+
     standard_key_list = standard_user_keys()
     custom_fields = {
         key: value for key, value in user_data.items() if key not in standard_key_list
@@ -5162,6 +5376,7 @@ def search_contact_data(
     custom_fields=[],
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results=[],
 ) -> List[Dict]:
     """Search Contacts in LegalServer for a set of search parameters.
 
@@ -5173,9 +5388,10 @@ def search_contact_data(
             check for the organization on.
         contact_search_params (dict): The specific parameters to search for when
             looking at contacts.
-        custom_fields (list): A optional list of custom fields to include.
+        custom_fields (list): An optional list of custom fields to include.
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A list of dictionaries for the matching contacts.
@@ -5193,6 +5409,10 @@ def search_contact_data(
     if custom_fields:
         if has_valid_items(custom_fields):
             contact_search_params["custom_fields"] = format_field_list(custom_fields)
+
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="contacts"):
+            contact_search_params["custom_results"] = custom_results
 
     if sort == "asc":
         contact_search_params["sort"] = "asc"
@@ -5218,6 +5438,7 @@ def search_document_data(
     document_search_params: dict | None = None,
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results: List[str] = [],
 ) -> List[Dict]:
     """Search document data in LegalServer for a specific matter.
 
@@ -5235,6 +5456,7 @@ def search_document_data(
             for in the request.
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A list of dictionaries of matching documents.
@@ -5252,6 +5474,10 @@ def search_document_data(
         document_search_params["sort"] = "asc"
     elif sort == "desc":
         document_search_params["sort"] = "desc"
+
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="documents"):
+            document_search_params["custom_results"] = custom_results
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -5273,6 +5499,7 @@ def search_event_data(
     custom_fields=[],
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results: List[str] = [],
 ) -> List[Dict]:
     """Search event data in LegalServer for a specific matter.
 
@@ -5290,6 +5517,7 @@ def search_event_data(
         custom_fields (list): A optional list of custom fields to include.
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A list of dictionaries of matching events.
@@ -5315,6 +5543,10 @@ def search_event_data(
     elif sort == "desc":
         event_search_params["sort"] = "desc"
 
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="events"):
+            event_search_params["custom_results"] = custom_results
+
     return_data = loop_through_legalserver_responses(
         url=url,
         source_type="events",
@@ -5334,6 +5566,7 @@ def search_matter_additional_names(
     matter_additional_names_search_params: dict | None = None,
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results: List[str] = [],
 ) -> List[Dict]:
     """Search Additional Names on a given Matter in LegalServer.
 
@@ -5349,6 +5582,7 @@ def search_matter_additional_names(
             search parameters
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A list of dictionaries with the additional names data."""
@@ -5363,6 +5597,12 @@ def search_matter_additional_names(
         matter_additional_names_search_params["sort"] = "asc"
     elif sort == "desc":
         matter_additional_names_search_params["sort"] = "desc"
+
+    if custom_results:
+        if check_for_valid_fields(
+            source_list=custom_results, module="additional_names"
+        ):
+            matter_additional_names_search_params["custom_results"] = custom_results
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -5383,6 +5623,7 @@ def search_matter_adverse_parties(
     matter_adverse_parties_search_params: dict | None = None,
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results: List[str] = [],
 ) -> List[Dict]:
     """Search Adverse Parties on a given Matter in LegalServer.
 
@@ -5397,6 +5638,7 @@ def search_matter_adverse_parties(
         matter_adverse_parties_search_params (dict): Optional dictionary of search parameters
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A list of dictionaries with the Adverse Parties data."""
@@ -5411,6 +5653,10 @@ def search_matter_adverse_parties(
         matter_adverse_parties_search_params["sort"] = "asc"
     elif sort == "desc":
         matter_adverse_parties_search_params["sort"] = "desc"
+
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="adverse_parties"):
+            matter_adverse_parties_search_params["custom_results"] = custom_results
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -5431,6 +5677,7 @@ def search_matter_assignments_data(
     matter_assignment_search_params: dict | None = None,
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results: List[str] = [],
 ) -> List[Dict]:
     """Search Assignments on a given Matter in LegalServer.
 
@@ -5446,6 +5693,7 @@ def search_matter_assignments_data(
             parameters
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A list of dictionaries with the assignment data."""
@@ -5460,6 +5708,10 @@ def search_matter_assignments_data(
         matter_assignment_search_params["sort"] = "asc"
     elif sort == "desc":
         matter_assignment_search_params["sort"] = "desc"
+
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="assignments"):
+            matter_assignment_search_params["custom_results"] = custom_results
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -5481,6 +5733,7 @@ def search_matter_charges_data(
     custom_fields: list | None = None,
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results: List[str] = [],
 ) -> List[Dict]:
     """Search Charges on a given Matter in LegalServer.
 
@@ -5496,6 +5749,7 @@ def search_matter_charges_data(
         charges_search_params (dict): Optional dictionary of search parameters
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A list of dictionaries with the charges data."""
@@ -5513,6 +5767,10 @@ def search_matter_charges_data(
         charges_search_params["sort"] = "asc"
     elif sort == "desc":
         charges_search_params["sort"] = "desc"
+
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="charges"):
+            charges_search_params["custom_results"] = custom_results
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -5533,6 +5791,7 @@ def search_matter_contacts_data(
     matter_contact_search_params: dict | None = None,
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results: List[str] = [],
 ) -> List[Dict]:
     """Search Case Contacts on a given Matter in LegalServer.
 
@@ -5548,6 +5807,7 @@ def search_matter_contacts_data(
             parameters
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A list of dictionaries with the contacts data."""
@@ -5561,6 +5821,10 @@ def search_matter_contacts_data(
         matter_contact_search_params["sort"] = "asc"
     elif sort == "desc":
         matter_contact_search_params["sort"] = "desc"
+
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="matter_contacts"):
+            matter_contact_search_params["custom_results"] = custom_results
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -5582,6 +5846,7 @@ def search_matter_income_data(
     search_income_params: dict | None = None,
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results: List[str] = [],
 ) -> List[Dict]:
     """Search Income on a given Matter within LegalServer.
 
@@ -5597,6 +5862,7 @@ def search_matter_income_data(
         search_income_params (dict): Optional dictionary of search parameters
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A list of dictionaries with the income data."""
@@ -5613,6 +5879,10 @@ def search_matter_income_data(
         search_income_params["sort"] = "asc"
     elif sort == "desc":
         search_income_params["sort"] = "desc"
+
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="incomes"):
+            search_income_params["custom_results"] = custom_results
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -5634,6 +5904,7 @@ def search_matter_litigation_data(
     custom_fields: list | None = None,
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results: List[str] = [],
 ) -> List[Dict]:
     """Search Litigation records within a given matter in LegalServer.
 
@@ -5651,6 +5922,7 @@ def search_matter_litigation_data(
         litigation_search_params (dict): Optional dictionary of search parameters
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A list of dictionaries with the litigation data."""
@@ -5669,6 +5941,10 @@ def search_matter_litigation_data(
         litigation_search_params["sort"] = "asc"
     elif sort == "desc":
         litigation_search_params["sort"] = "desc"
+
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="litigations"):
+            litigation_search_params["custom_results"] = custom_results
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -5690,6 +5966,7 @@ def search_matter_notes_data(
     search_note_params: dict | None = None,
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results: List[str] = [],
 ) -> List[Dict]:
     """Search Notes on a given Matter within LegalServer.
 
@@ -5705,6 +5982,7 @@ def search_matter_notes_data(
         search_note_params (dict): Optional dictionary of search parameters
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A list of dictionaries with the notes data."""
@@ -5721,6 +5999,10 @@ def search_matter_notes_data(
         search_note_params["sort"] = "asc"
     elif sort == "desc":
         search_note_params["sort"] = "desc"
+
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="notes"):
+            search_note_params["custom_results"] = custom_results
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -5741,6 +6023,7 @@ def search_matter_non_adverse_parties(
     matter_non_adverse_parties_search_params: dict | None = None,
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results: List[str] = [],
 ) -> List[Dict]:
     """Search Non-Adverse Parties on a given Matter in LegalServer.
 
@@ -5755,6 +6038,7 @@ def search_matter_non_adverse_parties(
         matter_non_adverse_parties_search_params (dict): Optional dictionary of search parameters
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A list of dictionaries with the Adverse Parties data."""
@@ -5769,6 +6053,12 @@ def search_matter_non_adverse_parties(
         matter_non_adverse_parties_search_params["sort"] = "asc"
     elif sort == "desc":
         matter_non_adverse_parties_search_params["sort"] = "desc"
+
+    if custom_results:
+        if check_for_valid_fields(
+            source_list=custom_results, module="non_adverse_parties"
+        ):
+            matter_non_adverse_parties_search_params["custom_results"] = custom_results
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -5790,6 +6080,7 @@ def search_matter_services_data(
     custom_fields: list | None = None,
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results: List[str] = [],
 ) -> List[Union[str, Dict]]:
     """Search Service records for a given Matter in LegalServer.
 
@@ -5805,6 +6096,7 @@ def search_matter_services_data(
         services_search_params (dict): Optional dictionary of search parameters
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A list of dictionaries with the services data."""
@@ -5822,6 +6114,10 @@ def search_matter_services_data(
         services_search_params["sort"] = "asc"
     elif sort == "desc":
         services_search_params["sort"] = "desc"
+
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="services"):
+            services_search_params["custom_results"] = custom_results
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -5843,6 +6139,7 @@ def search_task_data(
     custom_fields=[],
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results: List[str] = [],
 ) -> List[Dict]:
     """Search task data in LegalServer for a specific matter.
 
@@ -5860,6 +6157,7 @@ def search_task_data(
         custom_fields (list): A optional list of custom fields to include.
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A list of dictionaries of matching tasks.
@@ -5885,6 +6183,10 @@ def search_task_data(
     elif sort == "desc":
         task_search_params["sort"] = "desc"
 
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="tasks"):
+            task_search_params["custom_results"] = custom_results
+
     return_data = loop_through_legalserver_responses(
         url=url,
         source_type="tasks",
@@ -5904,6 +6206,7 @@ def search_user_data(
     custom_fields: list | None = None,
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results: List[str] = [],
 ) -> List[Dict]:
     """Search LegalServer Users with a set of search parameters.
 
@@ -5918,6 +6221,7 @@ def search_user_data(
         custom_fields (list): A optional list of custom fields to include.
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         A list of dictionaries for the identified users.
@@ -5941,6 +6245,10 @@ def search_user_data(
     elif sort == "desc":
         user_search_params["sort"] = "desc"
 
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="users"):
+            user_search_params["custom_results"] = custom_results
+
     return_data = loop_through_legalserver_responses(
         url=url,
         source_type="user",
@@ -5960,6 +6268,7 @@ def search_organization_data(
     custom_fields: list | None = None,
     sort: str | None = None,
     page_limit: int | None = None,
+    custom_results: List[str] = [],
 ) -> List[Dict]:
     """
     Search Organizations within LegalServer for a given set of parameters and custom fields.
@@ -5972,6 +6281,7 @@ def search_organization_data(
         custom_fields (list):
         sort (str): Optional string to sort the results by. Defaults to ASC.
         page_limit (int): Optional integer to limit the number of results returned.
+        custom_results (list): An optional list of fields to return.
 
     Returns:
         List of dictionaries
@@ -5995,6 +6305,10 @@ def search_organization_data(
         organization_search_params["sort"] = "asc"
     elif sort == "desc":
         organization_search_params["sort"] = "desc"
+
+    if custom_results:
+        if check_for_valid_fields(source_list=custom_results, module="organizations"):
+            organization_search_params["custom_results"] = custom_results
 
     return_data = loop_through_legalserver_responses(
         url=url,
@@ -6806,5 +7120,7 @@ def standard_user_keys() -> List[str]:
         "contractor_doing_business_as",
         "organization_affiliations",
         "contractor_assignment_types",
+        "supervisors",
+        "supervisees",
     ]
     return standard_user_keys
