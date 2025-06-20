@@ -115,7 +115,7 @@ legalserver:
 ```
 
 For example, the following configuration will return just one interview and will
-only be available on the integrations LegalServer site. 
+only be available on the integrations LegalServer site.
 
 ```(YAML)
 legalserver:
@@ -325,7 +325,9 @@ files and add them to a case note on the case.
 For simplicty, the public functions created by this Docassemble package are
 described in [Functions](Functions.md).
 
-## Sample Docassemble Interview
+## Sample Docassemble Interviews
+
+### Sample Letters
 
 A sample file `sample_letter.yml` is available in this package. This Docassemble
 interview has multiple steps in the creation of a letter to a client or attorney.
@@ -354,6 +356,15 @@ code block that sets defaults. This example also uses the
 [DACatchAll](https://docassemble.org/docs/fields.html#catchall) features to
 ensure that any used variables have already been defined in case the selected
 data was null in LegalServer.
+
+### Download Documents
+
+A sample file `sample_file_download.yml` is also available in this package. This
+Docassemble interview will get a list of documents on a given matter, allow you
+to filter or remove certain files, and then download the files as a .zip file.
+
+Please be aware of the space limitations on your Docassemble server when using
+this interview.
 
 ## ChangeLog
 
