@@ -41,13 +41,19 @@ Format:
 ### Security
 - 
 -->
+## [1.2.4]
+
+### Added
+
+* Support for the `case_type` parameter on the Get Matter request.
+
 ## [1.2.3]
 
 ### Added
 
-* Support added for the `custom_results` parameter. This required moving many
-fields behind a check to make sure they are not `None`. If there are minimum
-required fields that are erroring, defaults can be added in the future.
+* Support added for the `custom_results` parameter. This required moving many 
+fields behind a check to make sure they are not `None`. If there are minimum 
+required fields that are erroring, defaults can be added in the future. 
 * Added support for the User `supervisors` and `supervisees` parameters.
 
 ## [1.2.2]
@@ -59,7 +65,7 @@ required fields that are erroring, defaults can be added in the future.
 ### Changed
 
 * Added some type checking and not null checking to prevent potential errors.
-* Changed how First/Latest Pro Bono Attorneys are selected to prevent bad
+* Changed how First/Latest Pro Bono Attorneys are selected to prevent bad 
 potential data errors.
 
 ### Fixed
@@ -67,8 +73,8 @@ potential data errors.
 * Corrected type around user field population for `race` and `gender`.
 * Fixed bug in Client Address Census Tract.
 * Fixed bug in Client Military Status field.
-* Added default Client Street Address of "Unknown Street Address" if the
-LegalServer Street Address field is None but other address fields are populated.
+* Added default Client Street Address of "Unknown Street Address" if the 
+LegalServer Street Address field is None but other address fields are populated. 
 * Added handling for `number_of_children`
 
 ## [1.2.1]
@@ -158,7 +164,8 @@ representing an organization.
 ### Fixed
 
 * Additional Names now populate properly.
-* Fixed the keys for the Non-Adverse Party fields and adjusted the populate function.
+* Fixed the keys for the Non-Adverse Party fields and adjusted the populate 
+function.
 * Fixed the keys for the Services fields.
 * Fixed the keys for the Adverse Party fields and adjusted the populate function.
 * Fixed the keys for the Events fields and adjusted the populate function.
