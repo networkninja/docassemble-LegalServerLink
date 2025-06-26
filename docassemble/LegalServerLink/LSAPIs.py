@@ -1887,10 +1887,16 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
         if temp_list:
             case.special_legal_problem_code = temp_list
         del temp_list
-    if legalserver_data["intake_type"].get(
-        "lookup_value_name"
-    ) is not None and isinstance(legalserver_data["intake_type"], dict):
-        case.intake_type = legalserver_data["intake_type"].get("lookup_value_name")
+    if legalserver_data.get("intake_type") is not None and isinstance(
+        legalserver_data["intake_type"], dict
+    ):
+        if legalserver_data["intake_type"].get("lookup_value_name") is not None:
+            case.intake_type = legalserver_data["intake_type"].get("lookup_value_name")
+    if legalserver_data.get("case_type") is not None and isinstance(
+        legalserver_data["case_type"], dict
+    ):
+        if legalserver_data["case_type"].get("lookup_value_name") is not None:
+            case.case_type = legalserver_data["case_type"].get("lookup_value_name")
     if legalserver_data.get("impact") is not None:
         case.impact = legalserver_data.get("impact")
     if legalserver_data.get("special_characteristics") is not None and isinstance(
@@ -6681,6 +6687,7 @@ def standard_matter_keys() -> List[str]:
         "case_restrictions",
         "case_status",
         "case_title",
+        "case_type",
         "cause_number",
         "charges",
         "citizenship",
