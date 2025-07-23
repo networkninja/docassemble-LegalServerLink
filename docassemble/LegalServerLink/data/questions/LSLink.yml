@@ -90,7 +90,7 @@ code: |
 code: |
   stashed_secret = url_args.get('stashed_secret', None)
   stashed_key = url_args.get('stashed_key', None)
-  if stashed_secret and stashed_key:  
+  if stashed_secret and stashed_key:
     stored_data = retrieve_stashed_data(stashed_key, stashed_secret, delete=True )
     if stored_data:
       parse_stored_variables = set_variables(stored_data)
@@ -102,7 +102,7 @@ code: |
   if 'error' in token_check:
     check_legalserver_token_exists = False
     legalserver_error_source.append({'source':'Token', 'error': token_check['error']})
-  else: 
+  else:
     check_legalserver_token_exists = True
 ---
 question: |
@@ -111,7 +111,7 @@ subquestion: |
   The attempt to get case data resulted in an error.
 
   % for item in legalserver_error_source:
-  * ${ item['source']} - ${ str(item['error']) }. 
+  * ${ item['source']} - ${ str(item['error']) }.
   % endfor
 buttons:
   - Exit: exit
@@ -126,20 +126,20 @@ code: |
   if 'error' in legalserver_data:
     legalserver_data_error = True
     legalserver_error_source.append({'source':'Matter Details', 'error': legalserver_data['error']})
-  else: 
+  else:
     legalserver_data_error = False
 ---
 code: |
   if legalserver_data.get('is_group'):
     client_is_organization = True
-  else: 
+  else:
     client_is_organization = False
   check_for_legalserver_client_organization = True
 ---
 code: |
   check_for_legalserver_client_organization
   raise_errors_getting_legalserver_data
-  populate_client(client=client, legalserver_data=legalserver_data)  
+  populate_client(client=client, legalserver_data=legalserver_data)
   parse_client_data = True
 ---
 code: |
@@ -212,11 +212,11 @@ code: |
 code: |
   raise_errors_getting_legalserver_data
   populate_associated_cases(associated_case_list=legalserver_associated_cases, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
-  parse_legalserver_associated_cases_data = True  
+  parse_legalserver_associated_cases_data = True
 ---
 code: |
   raise_errors_getting_legalserver_data
-  populate_contacts(contact_list=legalserver_contacts, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)  
+  populate_contacts(contact_list=legalserver_contacts, legalserver_data=legalserver_data, legalserver_site=legalserver_site, legalserver_matter_uuid=legalserver_matter_uuid)
   parse_legalserver_contact_data = True
 ---
 code: |

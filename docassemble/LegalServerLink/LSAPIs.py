@@ -1756,6 +1756,11 @@ def populate_case(*, case: DAObject, legalserver_data: dict) -> DAObject:
         case.email = legalserver_data.get("case_email_address")
     if legalserver_data.get("rejected") is not None:
         case.rejected = legalserver_data.get("rejected")
+    rejection_reason = legalserver_data.get("rejection_reason")
+    if isinstance(rejection_reason, dict):
+        lookup_value_name = rejection_reason.get("lookup_value_name")
+        if lookup_value_name is not None:
+            case.rejection_reason = lookup_value_name
     if legalserver_data.get("dynamic_process") is not None and isinstance(
         legalserver_data["dynamic_process"], dict
     ):
@@ -2580,9 +2585,13 @@ def populate_client(
     ):
         if legalserver_data["ssn_status"].get("lookup_value_name") is not None:
             client.ssn_status = legalserver_data["ssn_status"].get("lookup_value_name")
-    ## Note this field does not exist in LegalServer's API currently
-    if legalserver_data.get("salutation") is not None:
-        client.salutation_to_use = legalserver_data.get("salutation")
+    if legalserver_data.get("prefix") is not None and isinstance(
+        legalserver_data["prefix"], dict
+    ):
+        if legalserver_data["prefix"].get("lookup_value_name") is not None:
+            client.salutation_to_use = legalserver_data["prefix"].get(
+                "lookup_value_name"
+            )
     if legalserver_data.get("disabled") is not None:
         client.is_disabled = legalserver_data.get("disabled")
     if legalserver_data.get("employment_status") is not None and isinstance(
@@ -2594,6 +2603,13 @@ def populate_client(
             )
         elif isinstance(legalserver_data.get("employment_status"), str):
             client.employment_status = legalserver_data.get("employment_status")
+    if legalserver_data.get("pronouns") is not None and isinstance(
+        legalserver_data["pronouns"], dict
+    ):
+        if legalserver_data["pronouns"].get("lookup_value_name") is not None:
+            client.preferred_pronouns = legalserver_data["pronouns"].get(
+                "lookup_value_name"
+            )
 
     if legalserver_data.get("preferred_phone_number") is not None and isinstance(
         legalserver_data["preferred_phone_number"], dict
@@ -2612,9 +2628,9 @@ def populate_client(
     if legalserver_data.get("other_phone") is not None:
         client.other_phone = legalserver_data.get("other_phone")
     if legalserver_data.get("work_phone") is not None:
-        client.mobile_number = legalserver_data.get("work_phone")
+        client.work_phone = legalserver_data.get("work_phone")
     if legalserver_data.get("fax_phone") is not None:
-        client.other_phone = legalserver_data.get("fax_phone")
+        client.fax_phone = legalserver_data.get("fax_phone")
     if legalserver_data.get("home_phone_note") is not None:
         client.phone_number_note = legalserver_data.get("home_phone_note")
     if legalserver_data.get("mobile_phone_note") is not None:
@@ -2622,9 +2638,19 @@ def populate_client(
     if legalserver_data.get("other_phone_note") is not None:
         client.other_phone_note = legalserver_data.get("other_phone_note")
     if legalserver_data.get("work_phone_note") is not None:
-        client.mobile_number_note = legalserver_data.get("work_phone_note")
+        client.work_phone_note = legalserver_data.get("work_phone_note")
     if legalserver_data.get("fax_phone_note") is not None:
-        client.other_phone_note = legalserver_data.get("fax_phone_note")
+        client.fax_phone_note = legalserver_data.get("fax_phone_note")
+    if legalserver_data.get("home_phone_safe") is not None:
+        client.phone_number_safe = legalserver_data.get("home_phone_safe")
+    if legalserver_data.get("mobile_phone_safe") is not None:
+        client.mobile_number_safe = legalserver_data.get("mobile_phone_safe")
+    if legalserver_data.get("other_phone_safe") is not None:
+        client.other_phone_safe = legalserver_data.get("other_phone_safe")
+    if legalserver_data.get("work_phone_safe") is not None:
+        client.work_phone_safe = legalserver_data.get("work_phone_safe")
+    if legalserver_data.get("fax_phone_safe") is not None:
+        client.fax_phone_safe = legalserver_data.get("fax_phone_safe")
 
     if legalserver_data.get("language") is not None and isinstance(
         legalserver_data["language"], dict
@@ -2900,6 +2926,10 @@ def populate_client(
                 client.address.county = legalserver_data["client_address_home"][
                     "county"
                 ].get("lookup_value_name")
+        if legalserver_data["client_address_home"].get("safe_address") is not None:
+            client.address.safe_address = legalserver_data["client_address_home"].get(
+                "safe_address"
+            )
 
         # GIS Fields
         if legalserver_data["client_address_home"].get("lon") is not None:
@@ -6485,6 +6515,7 @@ def standard_client_home_address_keys() -> List[str]:
         "state_legislature_district_upper",
         "state_legislature_district_lower",
         "congressional_district",
+        "safe_address",
     ]
     return standard_client_home_address_keys
 
@@ -6820,6 +6851,7 @@ def standard_matter_keys() -> List[str]:
         "race",
         "referring_organizations",
         "rejected",
+        "rejection_reason",
         "rural",
         "school_status",
         "second_language",
@@ -6850,6 +6882,13 @@ def standard_matter_keys() -> List[str]:
         "visa_number",
         "work_phone",
         "work_phone_note",
+        "prefix",
+        "home_phone_safe",
+        "mobile_phone_safe",
+        "other_phone_safe",
+        "work_phone_safe",
+        "fax_phone_safe",
+        "pronouns",
     ]
     return standard_matter_keys
 
