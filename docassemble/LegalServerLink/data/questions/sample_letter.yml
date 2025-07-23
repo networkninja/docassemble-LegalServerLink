@@ -45,12 +45,12 @@ code: |
   # Sample defaults can be set. In this example, they are all commented out.
   check_for_defaults
 
-  # Then it is a question of who is receiving the letter. 
-  # This will copy the object over to the appropriate recipient. 
+  # Then it is a question of who is receiving the letter.
+  # This will copy the object over to the appropriate recipient.
   recipient_copied
 
-  # Then it is a question of who is sending the letter. 
-  # This will copy the object over to the appropriate sender. 
+  # Then it is a question of who is sending the letter.
+  # This will copy the object over to the appropriate sender.
   check_primary_and_current # if they are the same, then there is no question.
   client_message.sender
   sender_copied
@@ -150,7 +150,7 @@ question: |
   Email Sent
 subquestion: |
   % if email_sent_ok:
-  The email was successfully sent and the case was blind carbon copied. 
+  The email was successfully sent and the case was blind carbon copied.
   % else:
   The email was not successfully sent. No record was saved to the case.
   % endif
@@ -204,7 +204,7 @@ subquestion: |
   ${ generated_letter }
 
   % if file_submitted_to_LS:
-  File saved to the LegalServer case as both a PDF and DOCX file. 
+  File saved to the LegalServer case as both a PDF and DOCX file.
   % else:
   Error Uploading file to Legalserver.
   % endif
@@ -340,4 +340,3 @@ content: |
 
   ${ sender }
 ---
-
