@@ -181,6 +181,8 @@ def check_for_valid_fields(*, source_list: list, module: str) -> bool:
         standard_keys = standard_adverse_party_keys()
     elif module.lower() == "non_adverse_parties":
         standard_keys = standard_non_adverse_party_keys()
+    elif module.lower() == "appointments":
+        standard_keys = standard_appointments_keys()
     else:
         log(f"Unknown module type: {module}. Cannot check for valid fields.")
         raise ValueError(
@@ -268,7 +270,7 @@ def country_code_from_name(country_name_string: str) -> str:
     """
 
     country_code = "Unknown"
-    if country_name_string is not None:
+    if country_name_string is not None and isinstance(country_name_string, str):
         if country_name_string == "United States":
             return "US"
         else:
@@ -294,6 +296,12 @@ def country_code_from_name(country_name_string: str) -> str:
                     f"{country_name_string}"
                 )
                 country_code = "Unknown"
+    else:
+        log(
+            f"Invalid country name provided for conversion to country code: "
+            f"{country_name_string}"
+        )
+        country_code = "Unknown"
     return country_code
 
 
@@ -2875,7 +2883,27 @@ def populate_client(
             client.military_service = legalserver_data["military_service"].get(
                 "lookup_value_name"
             )
-
+    eye_color = legalserver_data.get("eye_color")
+    if eye_color is not None and isinstance(eye_color, dict):
+        if eye_color.get("lookup_value_name") is not None:
+            client.eye_color = eye_color.get("lookup_value_name")
+    elif eye_color is not None and isinstance(eye_color, str):
+        client.eye_color = eye_color
+    hair_color = legalserver_data.get("hair_color")
+    if hair_color is not None and isinstance(hair_color, dict):
+        if hair_color.get("lookup_value_name") is not None:
+            client.hair_color = hair_color.get("lookup_value_name")
+    elif hair_color is not None and isinstance(hair_color, str):
+        client.hair_color = hair_color
+    birth_state = legalserver_data.get("birth_state")
+    if birth_state is not None and isinstance(birth_state, dict):
+        if birth_state.get("lookup_value_name") is not None:
+            client.birth_state = birth_state.get("lookup_value_name")
+    elif birth_state is not None and isinstance(birth_state, str):
+        client.birth_state = birth_state
+    weight = legalserver_data.get("weight")
+    if weight is not None:
+        client.weight = weight
     # Client Home Address
     if legalserver_data.get("client_address_home") is not None and isinstance(
         legalserver_data.get("client_address_home"), dict
@@ -6760,11 +6788,13 @@ def standard_matter_keys() -> List[str]:
         "events",
         "exclude_from_search_results",
         "external_id",
+        "eye_color",
         "fax_phone",
         "fax_phone_note",
         "fee_generating",
         "first",
         "google_drive_folder_id",
+        "hair_color",
         "highest_education",
         "home_phone",
         "home_phone_note",
@@ -6889,8 +6919,41 @@ def standard_matter_keys() -> List[str]:
         "work_phone_safe",
         "fax_phone_safe",
         "pronouns",
+        "appointments",
+        "weight",
+        "birth_state",
     ]
     return standard_matter_keys
+
+
+def standard_appointments_keys() -> List[str]:
+    """Return the list of keys present in a Matter's Clinic Appointments
+    response from LegalServer to better identify the custom fields.
+
+    Args:
+        None.
+
+    Returns:
+        A list of strings.
+    """
+    standard_appointments_keys = [
+        "uuid",
+        "starttime",
+        "endtime",
+        "matter",
+        "user",
+        "status",
+        "label",
+        "category",
+        "assignment",
+        "assignment_type",
+        "notes",
+        "problem_notes",
+        "reservation_time",
+        "available_online",
+        "pending_case_transfer",
+    ]
+    return standard_appointments_keys
 
 
 def standard_non_adverse_party_keys() -> List[str]:

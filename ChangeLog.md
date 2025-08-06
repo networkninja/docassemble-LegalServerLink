@@ -41,6 +41,12 @@ Format:
 ### Security
 - 
 -->
+## [1.2.7]
+
+### Added
+
+* Support for the `appointments`, `eye_color`, `weight`,
+`hair_color`, `birth_state` parameters on the Get Matter request.
 
 ## [1.2.6]
 
